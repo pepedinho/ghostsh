@@ -25,6 +25,10 @@ fn skipToNext(line: []const u8, i: usize, target: u8) ?usize {
     return i + 1 + found;
 }
 
+fn print_error(target: u8) void {
+    std.debug.print("unclosed '{c}'\n", .{target});
+}
+
 fn check_unclose_elements(line: []const u8) bool {
     var i: usize = 0;
 
@@ -32,13 +36,22 @@ fn check_unclose_elements(line: []const u8) bool {
         const c = line[i];
         switch (c) {
             '"' => {
-                i = skipToNext(line, i, '"') orelse return false;
+                i = skipToNext(line, i, '"') orelse {
+                    print_error('"');
+                    return false;
+                };
             },
             '\'' => {
-                i = skipToNext(line, i, '\'') orelse return false;
+                i = skipToNext(line, i, '\'') orelse {
+                    print_error('\'');
+                    return false;
+                };
             },
             '(' => {
-                i = skipToNext(line, i, ')') orelse return false;
+                i = skipToNext(line, i, ')') orelse {
+                    print_error('(');
+                    return false;
+                };
             },
             else => {},
         }
@@ -50,6 +63,6 @@ fn check_unclose_elements(line: []const u8) bool {
 
 pub fn parse(command_line: []const u8) void {
     if (!check_unclose_elements(command_line)) {
-        std.debug.print("unclose dquotes find\n", .{});
+        // std.debug.print("unclose dquotes find\n", .{});
     }
 }
