@@ -2,6 +2,8 @@ const std = @import("std");
 const token = @import("token.zig");
 const utils = @import("utils.zig");
 
+const ArrayList = std.ArrayList;
+
 pub const Command = struct {
     heredoc: bool,
     open_quotes: bool,
@@ -57,10 +59,23 @@ fn check_unclose_elements(line: []const u8) bool {
 
 pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
     if (!check_unclose_elements(command_line)) {
-        // std.debug.print("unclose dquotes find\n", .{});
         return;
     }
+
     const tokens = try token.lex(allocator, command_line);
+    // for (tokens, 0..) |tok, i| {
+    //     switch (tok) {
+    //         .Word => {
+    //             if (i > 0) {
+    //                 // here i will check precedent token to determine the type of the current word
+    //                 switch (tokens[i - 1]) {
+    //                     else => {},
+    //                 }
+    //             }
+    //         },
+    //         else => {},
+    //     }
+    // }
     utils.printToken(tokens);
     token.freeTokens(allocator, tokens);
 }

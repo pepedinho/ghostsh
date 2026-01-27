@@ -5,11 +5,18 @@ pub const Error = error{NoSpaceFound};
 
 pub const Token = union(enum) {
     Pipe, // |
-    Word: []const u8,
+    Word: Word,
     Heredoc, // <<
     LRedir, // <
     RRedir, // >
     ARRedir, // >>
+};
+
+pub const Word = union(enum) {
+    Command: []const u8,
+    Arg: []const u8,
+    File: []const u8,
+    Undefined: []const u8,
 };
 
 pub fn debugPrint(token: Token) void {
@@ -29,15 +36,14 @@ pub fn debugPrint(token: Token) void {
         .ARRedir => {
             std.debug.print("Token::ARRedir\n", .{});
         },
-        .Word => |word| {
-            std.debug.print("Token::Word(\"{s}\")\n", .{word});
+        .Word => |word_union| {
+            switch (word_union) {
+                inline else => |word| std.debug.print("Token::Word(\"{s}\")\n", .{word}),
+            }
         },
     }
 }
 
-///This function returns the index of the end of a word.
-///The end of a word means the point at which one of the separators.
-///contained in the `separators` variable is found.
 fn extractWord(allocator: std.mem.Allocator, line: []const u8, i: usize) ![]const u8 {
     const separators = " |<>";
     const rest = line[i..];
@@ -49,7 +55,11 @@ fn extractWord(allocator: std.mem.Allocator, line: []const u8, i: usize) ![]cons
 pub fn freeTokens(allocator: std.mem.Allocator, tokens: []Token) void {
     for (tokens) |token| {
         switch (token) {
-            .Word => |word| allocator.free(word),
+            .Word => |word_union| {
+                switch (word_union) {
+                    inline else => |slice| allocator.free(slice),
+                }
+            },
             else => {},
         }
     }
@@ -86,7 +96,7 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8) ![]Token {
                     continue;
                 }
 
-                try tokens.append(allocator, Token{ .Word = word });
+                try tokens.append(allocator, Token{ .Word = Word{ .Undefined = word } });
                 i += word.len;
             },
         }
