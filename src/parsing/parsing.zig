@@ -1,5 +1,6 @@
 const std = @import("std");
 const token = @import("token.zig");
+const utils = @import("utils.zig");
 
 pub const Command = struct {
     heredoc: bool,
@@ -60,8 +61,6 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
         return;
     }
     const tokens = try token.lex(allocator, command_line);
-    for (tokens) |tok| {
-        token.debugPrint(tok);
-    }
+    utils.printToken(tokens);
     token.freeTokens(allocator, tokens);
 }

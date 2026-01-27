@@ -35,6 +35,9 @@ pub fn debugPrint(token: Token) void {
     }
 }
 
+///This function returns the index of the end of a word.
+///The end of a word means the point at which one of the separators.
+///contained in the `separators` variable is found.
 fn extractWord(allocator: std.mem.Allocator, line: []const u8, i: usize) ![]const u8 {
     const separators = " |<>";
     const rest = line[i..];
