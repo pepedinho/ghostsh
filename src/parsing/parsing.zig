@@ -57,6 +57,7 @@ fn check_unclose_elements(line: []const u8) bool {
 pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
     if (!check_unclose_elements(command_line)) {
         // std.debug.print("unclose dquotes find\n", .{});
+        return;
     }
     const tokens = try token.lex(allocator, command_line);
     for (tokens) |tok| {

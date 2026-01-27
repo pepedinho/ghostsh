@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub const c = @cImport({
+    @cInclude("stdio.h");
     @cInclude("readline/readline.h");
     @cInclude("readline/readline.h");
 });

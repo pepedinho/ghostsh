@@ -36,8 +36,9 @@ pub fn debugPrint(token: Token) void {
 }
 
 fn extractWord(allocator: std.mem.Allocator, line: []const u8, i: usize) ![]const u8 {
+    const separators = " |<>";
     const rest = line[i..];
-    const pos = if (std.mem.indexOfScalar(u8, rest, ' ')) |p| p else rest.len;
+    const pos = if (std.mem.indexOfAny(u8, rest, separators)) |p| p else rest.len;
 
     return try allocator.dupe(u8, line[i .. i + pos]);
 }
