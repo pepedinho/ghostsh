@@ -38,7 +38,10 @@ pub fn debugPrint(token: Token) void {
         },
         .Word => |word_union| {
             switch (word_union) {
-                inline else => |word| std.debug.print("Token::Word(\"{s}\")\n", .{word}),
+                .Command => |word| std.debug.print("Token::Word::Command(\"{s}\")\n", .{word}),
+                .Arg => |word| std.debug.print("Token::Word::Arg(\"{s}\")\n", .{word}),
+                .File => |word| std.debug.print("Token::Word::File(\"{s}\")\n", .{word}),
+                .Undefined => |word| std.debug.print("Token::Word::Undefined(\"{s}\")\n", .{word}),
             }
         },
     }
