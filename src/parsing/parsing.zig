@@ -4,17 +4,6 @@ const utils = @import("utils.zig");
 
 const ArrayList = std.ArrayList;
 
-pub const Command = struct {
-    heredoc: bool,
-    open_quotes: bool,
-    name: []u8,
-    args: [][]u8,
-
-    pub fn deinit(self: Command, allocator: std.mem.Allocator) void {
-        allocator.free(self.args);
-    }
-};
-
 fn skipToNext(line: []const u8, i: usize, target: u8) ?usize {
     const rest = line[i + 1 ..];
     const found = std.mem.indexOfScalar(u8, rest, target) orelse return null;
@@ -63,19 +52,40 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
     }
 
     const tokens = try token.lex(allocator, command_line);
-    // for (tokens, 0..) |tok, i| {
-    //     switch (tok) {
-    //         .Word => {
-    //             if (i > 0) {
-    //                 // here i will check precedent token to determine the type of the current word
-    //                 switch (tokens[i - 1]) {
-    //                     else => {},
-    //                 }
-    //             }
-    //         },
-    //         else => {},
-    //     }
-    // }
+    for (tokens, 0..) |*tok, i| {
+        switch (tok.*) {
+            .Word => |w| {
+                const str = switch (w) {
+                    inline else => |s| s,
+                };
+                if (i > 0) {
+                    // here i will check precedent token to determine the type of the current word
+                    switch (tokens[i - 1]) {
+                        .Word => |word| {
+                            switch (word) {
+                                .File => {
+                                    tok.* = .{ .Word = .{ .Command = str } };
+                                },
+                                .Command, .Arg => {
+                                    tok.* = .{ .Word = .{ .Arg = str } };
+                                },
+                                else => {},
+                            }
+                        },
+                        .LRedir, .RRedir => {
+                            tok.* = .{ .Word = .{ .File = str } };
+                        },
+                        else => {
+                            tok.* = .{ .Word = .{ .Command = str } };
+                        },
+                    }
+                } else {
+                    tok.* = .{ .Word = .{ .Command = str } };
+                }
+            },
+            else => {},
+        }
+    }
     utils.printToken(tokens);
     token.freeTokens(allocator, tokens);
 }
