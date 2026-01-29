@@ -7,8 +7,9 @@ const ArrayList = std.ArrayList;
 pub const ParseError = error{
     InvalidRedirection, // e.g  > |
     PipeAtStart, // e.g | ls
-    DandlingOperator, // e.g ls > (nothing)
+    DanglingOperator, // e.g ls > (nothing)
     EmptyCommand,
+    UseAndIsteadOfPipe,
 };
 
 fn skipToNext(line: []const u8, i: usize, target: u8) ?usize {
@@ -60,6 +61,7 @@ fn resolveWord(tokens: []token.Token, i: usize, str: []const u8) token.Word {
         .LRedir, .RRedir, .ARRedir, .Heredoc => .{ .File = str },
         .Pipe => .{ .Command = str },
         .Word => |prev_w| switch (prev_w) {
+            //FIXME: This is not exact, after a file a word can be a Command or an Arg depending on the last word kind
             .File => .{ .Command = str },
             else => .{ .Arg = str },
         },
@@ -72,7 +74,7 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
     }
 
     const tokens = try token.lex(allocator, command_line);
-    errdefer token.freeTokens(allocator, tokens);
+    defer token.freeTokens(allocator, tokens);
 
     if (tokens.len == 0) return;
 
@@ -81,10 +83,16 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
             .Pipe => {
                 if (i == 0) return error.PipeAtStart;
                 if (i > 0 and isRedir(tokens[i - 1])) return error.InvalidRedirection;
+                if (i == tokens.len - 1) return error.EmptyCommand;
+                const next_token = tokens[i + 1];
+                switch (next_token) {
+                    .Pipe, .RRedir, .ARRedir, .LRedir, .Heredoc => return error.UseAndIsteadOfPipe,
+                    else => {},
+                }
             },
             .LRedir, .RRedir, .ARRedir, .Heredoc => {
                 if (i > 0 and isRedir(tokens[i - 1])) return error.InvalidRedirection;
-                if (i == tokens.len - 1) return error.DandlingOperator;
+                if (i == tokens.len - 1) return error.DanglingOperator;
             },
             .Word => |w| {
                 const str = switch (w) {
@@ -95,7 +103,7 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
         }
     }
     utils.printToken(tokens);
-    token.freeTokens(allocator, tokens);
+    // token.freeTokens(allocator, tokens);
 }
 
 fn isRedir(tok: token.Token) bool {
