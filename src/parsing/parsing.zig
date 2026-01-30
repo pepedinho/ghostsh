@@ -6,10 +6,9 @@ const ArrayList = std.ArrayList;
 
 pub const ParseError = error{
     InvalidRedirection, // e.g  > |
-    PipeAtStart, // e.g | ls
     DanglingOperator, // e.g ls > (nothing)
     EmptyCommand,
-    UseAndIsteadOfPipe,
+    UnexpectedOperator,
 };
 
 fn skipToNext(line: []const u8, i: usize, target: u8) ?usize {
@@ -59,7 +58,7 @@ fn resolveWord(tokens: []token.Token, i: usize, str: []const u8) token.Word {
 
     return switch (tokens[i - 1]) {
         .LRedir, .RRedir, .ARRedir, .Heredoc => .{ .File = str },
-        .Pipe => .{ .Command = str },
+        .Pipe, .And, .AndAnd => .{ .Command = str },
         .Word => |prev_w| switch (prev_w) {
             //FIXME: This is not exact, after a file a word can be a Command or an Arg depending on the last word kind
             .File => .{ .Command = str },
@@ -69,6 +68,8 @@ fn resolveWord(tokens: []token.Token, i: usize, str: []const u8) token.Word {
 }
 
 pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
+
+    //TODO: here we need to open new readline prompt and concatenate the obtained line in the new line
     if (!checkUncloseElements(command_line)) {
         return;
     }
@@ -80,13 +81,13 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
 
     for (tokens, 0..) |*tok, i| {
         switch (tok.*) {
-            .Pipe => {
-                if (i == 0) return error.PipeAtStart;
+            .Pipe, .And, .AndAnd => {
+                if (i == 0) return error.UnexpectedOperator;
                 if (i > 0 and isRedir(tokens[i - 1])) return error.InvalidRedirection;
                 if (i == tokens.len - 1) return error.EmptyCommand;
                 const next_token = tokens[i + 1];
                 switch (next_token) {
-                    .Pipe, .RRedir, .ARRedir, .LRedir, .Heredoc => return error.UseAndIsteadOfPipe,
+                    .Pipe, .RRedir, .ARRedir, .Heredoc, .And, .AndAnd => return error.UnexpectedOperator,
                     else => {},
                 }
             },
