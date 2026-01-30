@@ -56,7 +56,7 @@ pub fn debugPrint(token: Token) void {
 }
 
 fn extractWord(allocator: std.mem.Allocator, line: []const u8, i: usize) ![]const u8 {
-    const separators = " |<>";
+    const separators = " |<>&";
     const rest = line[i..];
     const pos = if (std.mem.indexOfAny(u8, rest, separators)) |p| p else rest.len;
 
@@ -122,6 +122,7 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8) ![]Token {
                     }
                 }
                 try tokens.append(allocator, Token.And);
+                i += 1;
             },
             else => {
                 const word = try extractWord(allocator, line, i);

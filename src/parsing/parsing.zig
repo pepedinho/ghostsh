@@ -6,7 +6,6 @@ const ArrayList = std.ArrayList;
 
 pub const ParseError = error{
     InvalidRedirection, // e.g  > |
-    PipeAtStart, // e.g | ls
     DanglingOperator, // e.g ls > (nothing)
     EmptyCommand,
     UnexpectedOperator,
@@ -83,7 +82,7 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
     for (tokens, 0..) |*tok, i| {
         switch (tok.*) {
             .Pipe, .And, .AndAnd => {
-                if (i == 0) return error.PipeAtStart;
+                if (i == 0) return error.UnexpectedOperator;
                 if (i > 0 and isRedir(tokens[i - 1])) return error.InvalidRedirection;
                 if (i == tokens.len - 1) return error.EmptyCommand;
                 const next_token = tokens[i + 1];
