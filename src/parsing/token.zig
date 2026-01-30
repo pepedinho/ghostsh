@@ -10,6 +10,8 @@ pub const Token = union(enum) {
     LRedir, // <
     RRedir, // >
     ARRedir, // >>
+    And, // &
+    AndAnd, // &&
 };
 
 pub const Word = union(enum) {
@@ -35,6 +37,12 @@ pub fn debugPrint(token: Token) void {
         },
         .ARRedir => {
             std.debug.print("Token::ARRedir\n", .{});
+        },
+        .And => {
+            std.debug.print("Token::And\n", .{});
+        },
+        .AndAnd => {
+            std.debug.print("Token::AndAnd\n", .{});
         },
         .Word => |word_union| {
             switch (word_union) {
@@ -84,12 +92,32 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8) ![]Token {
                 i += 1;
             },
             '<' => {
+                if (i + 1 < line.len) {
+                    if (line[i + 1] == '<') {
+                        try tokens.append(allocator, Token.Heredoc);
+                        i += 2;
+                        continue;
+                    }
+                }
                 try tokens.append(allocator, Token.LRedir);
                 i += 1;
             },
             '>' => {
+                if (line[i + 1] == '>') {
+                    try tokens.append(allocator, Token.ARRedir);
+                    i += 2;
+                    continue;
+                }
                 try tokens.append(allocator, Token.RRedir);
                 i += 1;
+            },
+            '&' => {
+                if (line[i + 1] == '&') {
+                    try tokens.append(allocator, Token.AndAnd);
+                    i += 2;
+                    continue;
+                }
+                try tokens.append(allocator, Token.And);
             },
             else => {
                 const word = try extractWord(allocator, line, i);
