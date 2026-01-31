@@ -79,18 +79,26 @@ pub fn debugPrint(token: Token) void {
     }
 }
 
-fn extractWord(allocator: std.mem.Allocator, line_lex: LineLex) ![]const u8 {
-    const separators = &[_]u8{
-        ' ', '|', '<', '>', '&',
-        9,   10,  11,  12,  13,
-    };
-
+fn extractWord(allocator: std.mem.Allocator, line_lex: *LineLex) []const u8 {
     const line = line_lex.line;
     const start = line_lex.index;
-    const rest = line_lex.line[start..];
-    const pos = if (std.mem.indexOfAny(u8, rest, separators)) |p| p else rest.len;
+    var len: usize = 0;
 
-    return try allocator.dupe(u8, line[start .. start + pos]);
+    while (!line_lex.isEnd() and !utils.isSeparaor(line_lex.currentChar())) {
+        switch (line_lex.currentChar()) {
+            '"', '\'' => {
+                const inc = utils.skipToNext(line_lex.line, line_lex.index, line_lex.currentChar()) orelse unreachable;
+
+                line_lex.incrementNbIndex(inc);
+                len += inc;
+            },
+            else => {},
+        }
+        line_lex.incrementNbIndex(1);
+        len += 1;
+    }
+
+    return allocator.dupe(u8, line[start.. start + len]) catch unreachable;
 }
 
 pub fn freeTokens(allocator: std.mem.Allocator, tokens: []Token) void {
@@ -150,7 +158,7 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8) ![]Token {
                 line_lex.incrementNbIndex(1);
             },
             else => {
-                const word = try extractWord(allocator, line_lex);
+                const word = extractWord(allocator, &line_lex);
                 if (word.len == 0) {
                     allocator.free(word);
                     line_lex.incrementNbIndex(1);
@@ -158,7 +166,6 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8) ![]Token {
                 }
 
                 try tokens.append(allocator, Token{ .Word = Word{ .Undefined = word } });
-                line_lex.incrementNbIndex(word.len);
             },
         }
     }

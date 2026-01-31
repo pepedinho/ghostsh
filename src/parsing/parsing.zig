@@ -11,12 +11,6 @@ pub const ParseError = error{
     UnexpectedOperator,
 };
 
-fn skipToNext(line: []const u8, i: usize, target: u8) ?usize {
-    const rest = line[i + 1 ..];
-    const found = std.mem.indexOfScalar(u8, rest, target) orelse return null;
-    return i + 1 + found;
-}
-
 fn print_error(target: u8) void {
     std.debug.print("unclosed '{c}'\n", .{target});
 }
@@ -28,13 +22,13 @@ fn checkUncloseElements(line: []const u8) bool {
         const c = line[i];
         switch (c) {
             '"', '\'' => {
-                i = skipToNext(line, i, c) orelse {
+                i = utils.skipToNext(line, i, c) orelse {
                     print_error(c);
                     return false;
                 };
             },
             '(' => {
-                i = skipToNext(line, i, ')') orelse {
+                i = utils.skipToNext(line, i, ')') orelse {
                     print_error('(');
                     return false;
                 };
