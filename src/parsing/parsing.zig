@@ -69,7 +69,7 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
     }
 
     const tokens = try token.lex(allocator, command_line);
-    defer token.freeTokens(allocator, tokens);
+    // defer token.freeTokens(allocator, tokens);
 
     if (tokens.len == 0) return;
 

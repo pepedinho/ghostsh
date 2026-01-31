@@ -2,8 +2,12 @@ const std = @import("std");
 const parser = @import("../parsing/parsing.zig");
 const rl = @import("../readline.zig");
 
-pub fn receivePrompt(allocator: std.mem.Allocator) !void {
+pub fn receivePrompt(gpa_allocator: std.mem.Allocator) !void {
     while (true) {
+        var arena = std.heap.ArenaAllocator.init(gpa_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
+
         const command_line = rl.readline(allocator, "gsh> ") orelse {
             std.debug.print("error", .{});
             return;
