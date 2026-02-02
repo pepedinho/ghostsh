@@ -79,11 +79,7 @@ pub fn debugPrint(token: Token) void {
     }
 }
 
-fn extractWord(line_lex: LineLex) ![]const u8 {
-    const separators = &[_]u8{
-        ' ', '|', '<', '>', '&',
-        9,   10,  11,  12,  13,
-    };
+fn extractWord(line_lex: *LineLex) ![]const u8 {
 
     const line = line_lex.line;
     const start = line_lex.index;
@@ -103,7 +99,7 @@ fn extractWord(line_lex: LineLex) ![]const u8 {
         len += 1;
     }
 
-    return line[start .. start + pos];
+    return line[start .. start + len];
 }
 
 pub fn lex(allocator: std.mem.Allocator, line: []const u8) ![]Token {
@@ -149,7 +145,7 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8) ![]Token {
                 line_lex.incrementNbIndex(1);
             },
             else => {
-                const word = try extractWord(line_lex);
+                const word = try extractWord(&line_lex);
                 if (word.len == 0) {
                     line_lex.incrementNbIndex(1);
                     continue;

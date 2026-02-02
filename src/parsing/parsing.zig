@@ -22,13 +22,13 @@ fn checkUncloseElements(line: []const u8) bool {
         const c = line[i];
         switch (c) {
             '"', '\'' => {
-                i = utils.skipToNext(line, i, c) orelse {
+                i += utils.skipToNext(line, i, c) orelse {
                     print_error(c);
                     return false;
                 };
             },
             '(' => {
-                i = utils.skipToNext(line, i, ')') orelse {
+                i += utils.skipToNext(line, i, ')') orelse {
                     print_error('(');
                     return false;
                 };
