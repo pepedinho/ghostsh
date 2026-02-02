@@ -1,0 +1,30 @@
+{
+   readline_reachable_leaks
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:*alloc
+   ...
+   obj:*/libreadline.so.*
+}
+{
+   ncurses_tinfo_reachable_leaks
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:*alloc
+   ...
+   obj:*/libtinfo.so.*
+}
+{
+   readline_init_leaks
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   fun:rl_initialize
+}
+{
+   readline_expand_prompt_leaks
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   ...
+   fun:rl_expand_prompt
+}

@@ -3,10 +3,8 @@ const builtin = @import("builtin");
 const rl = @import("prompt/prompt.zig");
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{
-        .safety = builtin.mode == .Debug,
-    }){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-    try rl.receivePrompt(allocator);
+    // var gpa = std.heap.GeneralPurposeAllocator(.{
+    //     .safety = builtin.mode == .Debug,
+    // }){};
+    try rl.receivePrompt();
 }
