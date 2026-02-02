@@ -90,7 +90,6 @@ fn extractWord(line_lex: LineLex) ![]const u8 {
     const rest = line_lex.line[start..];
     const pos = if (std.mem.indexOfAny(u8, rest, separators)) |p| p else rest.len;
 
-    // return try allocator.dupe(u8, line[start .. start + pos]);
     return line[start .. start + pos];
 }
 
@@ -139,7 +138,6 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8) ![]Token {
             else => {
                 const word = try extractWord(line_lex);
                 if (word.len == 0) {
-                    allocator.free(word);
                     line_lex.incrementNbIndex(1);
                     continue;
                 }
