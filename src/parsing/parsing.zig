@@ -39,14 +39,14 @@ fn checkUncloseElements(allocator: std.mem.Allocator, line: []const u8) []const 
         const c = line[i];
         switch (c) {
             '"', '\'' => {
-                i = skipToNext(line, i, c) orelse {
-                    const prompt = if (c == '"') "dquote> " else "quote> ";
+                i += utils.skipToNext(line, i, c) orelse {
+					const prompt = if (c == '\'') "quote> " else "dquote> ";
                     const new_line = getNewLine(allocator, line, prompt);
                     return checkUncloseElements(allocator, new_line);
                 };
             },
             '(' => {
-                i = skipToNext(line, i, ')') orelse {
+                i += utils.skipToNext(line, i, ')') orelse {
                     const new_line = getNewLine(allocator, line, "subshell> ");
                     return checkUncloseElements(allocator, new_line);
                 };
