@@ -25,9 +25,9 @@ fn getNewLine(allocator: std.mem.Allocator, command_line: []const u8, prompt: []
 
     var new_line = allocator.alloc(u8, command_line.len + next_line.len + 1) catch unreachable;
 
-	@memmove(new_line[0..command_line.len], command_line);
+    @memmove(new_line[0..command_line.len], command_line);
     new_line[command_line.len] = '\n';
-	@memmove(new_line[command_line.len + 1..], next_line);
+    @memmove(new_line[command_line.len + 1 ..], next_line);
 
     return new_line;
 }
@@ -40,7 +40,7 @@ fn checkUncloseElements(allocator: std.mem.Allocator, line: []const u8) []const 
         switch (c) {
             '"', '\'' => {
                 i += utils.skipToNext(line, i, c) orelse {
-					const prompt = if (c == '\'') "quote> " else "dquote> ";
+                    const prompt = if (c == '\'') "quote> " else "dquote> ";
                     const new_line = getNewLine(allocator, line, prompt);
                     return checkUncloseElements(allocator, new_line);
                 };
@@ -72,7 +72,6 @@ fn resolveWord(tokens: []token.Token, i: usize, str: []const u8) token.Word {
 }
 
 pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
-
     const full_line = checkUncloseElements(allocator, command_line);
 
     const tokens = try token.lex(allocator, full_line);

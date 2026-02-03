@@ -80,7 +80,6 @@ pub fn debugPrint(token: Token) void {
 }
 
 fn extractWord(line_lex: *LineLex) ![]const u8 {
-
     const line = line_lex.line;
     const start = line_lex.index;
     var len: usize = 0;

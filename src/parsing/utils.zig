@@ -5,7 +5,7 @@ const Token = token.Token;
 const debugPrint = token.debugPrint;
 
 pub fn isSpace(char: u8) bool {
-	return (char >= 9 and char <= 13 or char == 32);
+    return (char >= 9 and char <= 13 or char == 32);
 }
 
 pub fn skipToNext(line: []const u8, i: usize, target: u8) ?usize {
@@ -15,11 +15,11 @@ pub fn skipToNext(line: []const u8, i: usize, target: u8) ?usize {
 }
 
 pub fn isOperator(char: u8) bool {
-	return (char == '|'  or char == '<' or char == '>' or char == '&');
+    return (char == '|' or char == '<' or char == '>' or char == '&');
 }
 
 pub fn isSeparaor(char: u8) bool {
-	return (isSpace(char) or isOperator(char));
+    return (isSpace(char) or isOperator(char));
 }
 
 pub fn printToken(tokens: []token.Token) void {
