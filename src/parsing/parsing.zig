@@ -103,7 +103,6 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
         }
     }
     utils.printToken(tokens);
-    // token.freeTokens(allocator, tokens);
 }
 
 fn isRedir(tok: token.Token) bool {
