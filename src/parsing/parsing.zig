@@ -1,6 +1,7 @@
 const std = @import("std");
 const token = @import("token.zig");
 const utils = @import("utils.zig");
+const rl = @import("../readline.zig");
 
 const ArrayList = std.ArrayList;
 
@@ -17,34 +18,43 @@ fn skipToNext(line: []const u8, i: usize, target: u8) ?usize {
     return i + 1 + found;
 }
 
-fn print_error(target: u8) void {
-    std.debug.print("unclosed '{c}'\n", .{target});
+fn getNewLine(allocator: std.mem.Allocator, command_line: []const u8, prompt: []const u8) []const u8 {
+    const next_line = rl.readline(allocator, prompt) orelse unreachable;
+
+    defer rl.free(next_line);
+
+    var new_line = allocator.alloc(u8, command_line.len + next_line.len + 1) catch unreachable;
+
+	@memmove(new_line[0..command_line.len], command_line);
+    new_line[command_line.len] = '\n';
+	@memmove(new_line[command_line.len + 1..], next_line);
+
+    return new_line;
 }
 
-fn checkUncloseElements(line: []const u8) bool {
+fn checkUncloseElements(allocator: std.mem.Allocator, line: []const u8) []const u8 {
     var i: usize = 0;
 
-    while (i < line.len) {
+    while (i < line.len) : (i += 1) {
         const c = line[i];
         switch (c) {
             '"', '\'' => {
                 i = skipToNext(line, i, c) orelse {
-                    print_error(c);
-                    return false;
+                    const prompt = if (c == '"') "dquote> " else "quote> ";
+                    const new_line = getNewLine(allocator, line, prompt);
+                    return checkUncloseElements(allocator, new_line);
                 };
             },
             '(' => {
                 i = skipToNext(line, i, ')') orelse {
-                    print_error('(');
-                    return false;
+                    const new_line = getNewLine(allocator, line, "subshell> ");
+                    return checkUncloseElements(allocator, new_line);
                 };
             },
             else => {},
         }
-
-        i += 1;
     }
-    return true;
+    return line;
 }
 
 fn resolveWord(tokens: []token.Token, i: usize, str: []const u8) token.Word {
@@ -63,12 +73,9 @@ fn resolveWord(tokens: []token.Token, i: usize, str: []const u8) token.Word {
 
 pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
 
-    //TODO: here we need to open new readline prompt and concatenate the obtained line in the new line
-    if (!checkUncloseElements(command_line)) {
-        return;
-    }
+    const full_line = checkUncloseElements(allocator, command_line);
 
-    const tokens = try token.lex(allocator, command_line);
+    const tokens = try token.lex(allocator, full_line);
 
     if (tokens.len == 0) return;
 
