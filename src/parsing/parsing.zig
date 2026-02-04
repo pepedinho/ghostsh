@@ -71,10 +71,10 @@ fn resolveWord(tokens: []token.Token, i: usize, str: []const u8) token.Word {
     };
 }
 
-pub fn parse(allocator: std.mem.Allocator, command_line: []const u8) !void {
+pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: std.process.EnvMap) !void {
     const full_line = checkUncloseElements(allocator, command_line);
 
-    const tokens = try token.lex(allocator, full_line);
+    const tokens = try token.lex(allocator, full_line, env);
 
     if (tokens.len == 0) return;
 

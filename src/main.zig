@@ -3,10 +3,6 @@ const builtin = @import("builtin");
 const rl = @import("prompt/prompt.zig");
 
 pub fn main() !void {
-    // var gpa = std.heap.GeneralPurposeAllocator(.{
-    //     .safety = builtin.mode == .Debug,
-    // }){};
-
     const buffer: [4096]u8 = undefined;
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -25,5 +21,5 @@ pub fn main() !void {
         std.debug.print("{s} = {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
     }
 
-    try rl.receivePrompt();
+    try rl.receivePrompt(env_map);
 }

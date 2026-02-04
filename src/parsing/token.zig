@@ -101,7 +101,23 @@ fn extractWord(line_lex: *LineLex) ![]const u8 {
     return line[start .. start + len];
 }
 
-pub fn lex(allocator: std.mem.Allocator, line: []const u8) ![]Token {
+fn extractVarName(line_lex: *LineLex) []const u8 {
+    const separators = &[_]u8{
+        ' ', '|', '<', '>', '&',
+        9,   10,  11,  12,  13,
+    };
+
+    line_lex.index += 1; // eat '$'
+    const line = line_lex.line;
+    const start = line_lex.index;
+    const rest = line[start..];
+    const pos = if (std.mem.indexOfAny(u8, rest, separators)) |p| p else rest.len;
+
+    line_lex.index += pos;
+    return line[start .. start + pos];
+}
+
+pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: std.process.EnvMap) ![]Token {
     var line_lex = LineLex{ .line = line, .index = 0 };
 
     var tokens: ArrayList(Token) = .empty;
@@ -142,6 +158,13 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8) ![]Token {
                 }
                 try tokens.append(allocator, Token.And);
                 line_lex.incrementNbIndex(1);
+            },
+            '$' => {
+                const word = extractVarName(&line_lex);
+                std.debug.print("env name: {s}\n", .{word});
+                const content = env.hash_map.get(word) orelse "";
+                const env_tokens = try lex(allocator, content, env);
+                try tokens.appendSlice(allocator, env_tokens);
             },
             else => {
                 const word = try extractWord(&line_lex);
