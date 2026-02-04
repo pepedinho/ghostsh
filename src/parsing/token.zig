@@ -161,7 +161,6 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: std.process.EnvM
             },
             '$' => {
                 const word = extractVarName(&line_lex);
-                std.debug.print("env name: {s}\n", .{word});
                 const content = env.hash_map.get(word) orelse "";
                 const env_tokens = try lex(allocator, content, env);
                 try tokens.appendSlice(allocator, env_tokens);
