@@ -7,7 +7,7 @@ const rl = @import("../readline.zig");
 const ARENA_REINIT_THRESHOLD = 1000;
 var arena_size: usize = 0;
 
-pub fn receivePrompt() !void {
+pub fn receivePrompt(env: *const std.process.EnvMap) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
     while (true) {
@@ -17,7 +17,7 @@ pub fn receivePrompt() !void {
             std.debug.print("error", .{});
             return;
         };
-        parser.parse(allocator, command_line) catch |err| {
+        parser.parse(allocator, command_line, env) catch |err| {
             switch (err) {
                 inline else => std.debug.print("gsh: error: {s}\n", .{@errorName(err)}),
             }
