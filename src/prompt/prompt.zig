@@ -7,7 +7,7 @@ const rl = @import("../readline.zig");
 const ARENA_REINIT_THRESHOLD = 1000;
 var arena_size: usize = 0;
 
-pub fn receivePrompt(env: std.process.EnvMap) !void {
+pub fn receivePrompt(env: *const std.process.EnvMap) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
     while (true) {

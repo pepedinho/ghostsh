@@ -15,11 +15,5 @@ pub fn main() !void {
     var env_map = try std.process.getEnvMap(allocator);
     defer env_map.deinit();
 
-    var it = env_map.iterator();
-
-    while (it.next()) |entry| {
-        std.debug.print("{s} = {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
-    }
-
-    try rl.receivePrompt(env_map);
+    try rl.receivePrompt(&env_map);
 }

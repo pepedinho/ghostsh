@@ -79,7 +79,7 @@ pub fn debugPrint(token: Token) void {
     }
 }
 
-fn extractWord(line_lex: *LineLex, env: std.process.EnvMap, allocator: std.mem.Allocator) ![]const u8 {
+fn extractWord(line_lex: *LineLex, env: *const std.process.EnvMap, allocator: std.mem.Allocator) ![]const u8 {
     const line = line_lex.line;
     const start = line_lex.index;
     var is_dquotes = false;
@@ -106,7 +106,7 @@ fn extractWord(line_lex: *LineLex, env: std.process.EnvMap, allocator: std.mem.A
             var expanded: std.ArrayList(u8) = .empty;
             try expanded.appendSlice(allocator, line[start .. start + pos]);
             const var_name = extractVarNameByIndex(line[start .. start + len], pos);
-            const value = env.hash_map.get(var_name) orelse "";
+            const value = env.get(var_name) orelse "";
             try expanded.appendSlice(allocator, value);
             try expanded.appendSlice(allocator, line[start + pos + var_name.len + 1 .. start + len]);
             std.debug.print("find '$' in dquotes at index '{d}'\n", .{pos});
@@ -134,6 +134,7 @@ fn extractVarNameByIndex(line: []const u8, index: usize) []const u8 {
     return line[start .. start + pos];
 }
 
+//FIXME: changes separators to accept only alphanum char and '_'
 fn extractVarName(line_lex: *LineLex) []const u8 {
     const separators = &[_]u8{
         ' ', '|', '<', '>', '&',
@@ -150,7 +151,7 @@ fn extractVarName(line_lex: *LineLex) []const u8 {
     return line[start .. start + pos];
 }
 
-pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: std.process.EnvMap) ![]Token {
+pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: *const std.process.EnvMap) ![]Token {
     var line_lex = LineLex{ .line = line, .index = 0 };
 
     var tokens: ArrayList(Token) = .empty;
@@ -194,7 +195,7 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: std.process.EnvM
             },
             '$' => {
                 const word = extractVarName(&line_lex);
-                const content = env.hash_map.get(word) orelse "";
+                const content = env.get(word) orelse "";
                 const env_tokens = try lex(allocator, content, env);
                 try tokens.appendSlice(allocator, env_tokens);
             },
