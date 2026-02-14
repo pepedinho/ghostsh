@@ -79,14 +79,17 @@ pub fn debugPrint(token: Token) void {
     }
 }
 
-fn extractWord(line_lex: *LineLex) ![]const u8 {
+fn extractWord(line_lex: *LineLex, env: std.process.EnvMap, allocator: std.mem.Allocator) ![]const u8 {
     const line = line_lex.line;
     const start = line_lex.index;
+    var is_dquotes = false;
     var len: usize = 0;
 
     while (!line_lex.isEnd() and !utils.isSeparaor(line_lex.currentChar())) {
         switch (line_lex.currentChar()) {
             '"', '\'' => {
+                if (line_lex.currentChar() == '"' and len == 0)
+                    is_dquotes = true;
                 const inc = utils.skipToNext(line_lex.line, line_lex.index, line_lex.currentChar()) orelse unreachable;
 
                 line_lex.incrementNbIndex(inc);
@@ -98,7 +101,37 @@ fn extractWord(line_lex: *LineLex) ![]const u8 {
         len += 1;
     }
 
+    if (is_dquotes) {
+        if (std.mem.indexOfScalar(u8, line[start .. start + len], '$')) |pos| {
+            var expanded: std.ArrayList(u8) = .empty;
+            try expanded.appendSlice(allocator, line[start .. start + pos]);
+            const var_name = extractVarNameByIndex(line[start .. start + len], pos);
+            const value = env.hash_map.get(var_name) orelse "";
+            try expanded.appendSlice(allocator, value);
+            try expanded.appendSlice(allocator, line[start + pos + var_name.len + 1 .. start + len]);
+            std.debug.print("find '$' in dquotes at index '{d}'\n", .{pos});
+            std.debug.print("name = {s}\n", .{var_name});
+            std.debug.print("value = {s}\n", .{value});
+            std.debug.print("expanded = {s}\n", .{expanded.items});
+            return try expanded.toOwnedSlice(allocator);
+        }
+    }
+
     return line[start .. start + len];
+}
+
+fn extractVarNameByIndex(line: []const u8, index: usize) []const u8 {
+    const separators = &[_]u8{
+        ' ', '|',  '<', '>', '&',
+        '"', '\'', 9,   10,  11,
+        12,  13,
+    };
+
+    const start = index + 1;
+    const rest = line[start..];
+    const pos = if (std.mem.indexOfAny(u8, rest, separators)) |p| p else rest.len;
+
+    return line[start .. start + pos];
 }
 
 fn extractVarName(line_lex: *LineLex) []const u8 {
@@ -166,7 +199,7 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: std.process.EnvM
                 try tokens.appendSlice(allocator, env_tokens);
             },
             else => {
-                const word = try extractWord(&line_lex);
+                const word = try extractWord(&line_lex, env, allocator);
                 if (word.len == 0) {
                     line_lex.incrementNbIndex(1);
                     continue;
