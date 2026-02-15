@@ -40,9 +40,9 @@ pub const Token = union(enum) {
 
 pub const Word = union(enum) {
     Command: []const u8,
+    Subshell: []const u8,
     Arg: []const u8,
     File: []const u8,
-    Undefined: []const u8,
 };
 
 pub fn debugPrint(token: Token) void {
@@ -71,9 +71,9 @@ pub fn debugPrint(token: Token) void {
         .Word => |word_union| {
             switch (word_union) {
                 .Command => |word| std.debug.print("Token::Word::Command(\"{s}\")\n", .{word}),
+                .Subshell => |word| std.debug.print("Token::Word::Subshell(\"{s}\")\n", .{word}),
                 .Arg => |word| std.debug.print("Token::Word::Arg(\"{s}\")\n", .{word}),
                 .File => |word| std.debug.print("Token::Word::File(\"{s}\")\n", .{word}),
-                .Undefined => |word| std.debug.print("Token::Word::Undefined(\"{s}\")\n", .{word}),
             }
         },
     }
@@ -151,8 +151,27 @@ fn extractVarName(line_lex: *LineLex) []const u8 {
     return line[start .. start + pos];
 }
 
+fn extractSubshell(line_lex: *LineLex) []const u8 {
+    const start = line_lex.index;
+    var open_parenthesis: usize = 1;
+    var close_parenthesis: usize = 0;
+
+    line_lex.incrementNbIndex(1);
+    while (open_parenthesis != close_parenthesis) : (line_lex.incrementNbIndex(1)) {
+        const current_char = line_lex.currentChar();
+        switch (current_char) {
+            '(' => open_parenthesis += 1,
+            ')' => close_parenthesis += 1,
+            else => {},
+        }
+    }
+    return line_lex.line[start + 1 .. line_lex.index - 1];
+}
+
 pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: *const std.process.EnvMap) ![]Token {
     var line_lex = LineLex{ .line = line, .index = 0 };
+    var previous_is_redir = false;
+    var next_is_command = true;
 
     var tokens: ArrayList(Token) = .empty;
     errdefer tokens.deinit(allocator);
@@ -165,6 +184,7 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: *const std.proce
             '|' => {
                 try tokens.append(allocator, Token.Pipe);
                 line_lex.incrementNbIndex(1);
+                next_is_command = true;
             },
             '<' => {
                 if (line_lex.lookAhead() == '<') {
@@ -174,6 +194,7 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: *const std.proce
                 }
                 try tokens.append(allocator, Token.LRedir);
                 line_lex.incrementNbIndex(1);
+                previous_is_redir = true;
             },
             '>' => {
                 if (line_lex.lookAhead() == '>') {
@@ -183,6 +204,7 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: *const std.proce
                 }
                 try tokens.append(allocator, Token.RRedir);
                 line_lex.incrementNbIndex(1);
+                previous_is_redir = true;
             },
             '&' => {
                 if (line_lex.lookAhead() == '&') {
@@ -192,12 +214,18 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: *const std.proce
                 }
                 try tokens.append(allocator, Token.And);
                 line_lex.incrementNbIndex(1);
+                next_is_command = true;
             },
+            // FIXME: Il ne faut pas faire l'expand dans le parsing mais pendent l'execution.
             '$' => {
                 const word = extractVarName(&line_lex);
                 const content = env.get(word) orelse "";
                 const env_tokens = try lex(allocator, content, env);
                 try tokens.appendSlice(allocator, env_tokens);
+            },
+            '(' => {
+                const subshell = extractSubshell(&line_lex);
+                try tokens.append(allocator, Token{ .Word = Word{ .Subshell = subshell } });
             },
             else => {
                 const word = try extractWord(&line_lex, env, allocator);
@@ -205,8 +233,15 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: *const std.proce
                     line_lex.incrementNbIndex(1);
                     continue;
                 }
-
-                try tokens.append(allocator, Token{ .Word = Word{ .Undefined = word } });
+                if (previous_is_redir == true) {
+                    try tokens.append(allocator, Token{ .Word = Word{ .File = word } });
+                    previous_is_redir = false;
+                } else if (next_is_command == true) {
+                    try tokens.append(allocator, Token{ .Word = Word{ .Command = word } });
+                    next_is_command = false;
+                } else {
+                    try tokens.append(allocator, Token{ .Word = Word{ .Arg = word } });
+                }
             },
         }
     }

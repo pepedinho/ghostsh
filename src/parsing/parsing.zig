@@ -10,6 +10,7 @@ pub const ParseError = error{
     DanglingOperator, // e.g ls > (nothing)
     EmptyCommand,
     UnexpectedOperator,
+    UnexpectedTokenOpenParenthesis,
 };
 
 fn skipToNext(line: []const u8, i: usize, target: u8) ?usize {
@@ -95,14 +96,28 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *const
                 if (i == tokens.len - 1) return error.DanglingOperator;
             },
             .Word => |w| {
-                const str = switch (w) {
-                    inline else => |s| s,
-                };
-                tok.* = .{ .Word = resolveWord(tokens, i, str) };
+                switch (w) {
+                    .Subshell => {
+                        if (i > 0) {
+                            const prev_token = tokens[i - 1];
+                            if (i > 0 and isWord(prev_token) or isRedir(prev_token)) {
+                                return error.UnexpectedTokenOpenParenthesis;
+                            }
+                        }
+                    },
+                    else => {},
+                }
             },
         }
     }
     utils.printToken(tokens);
+}
+
+fn isWord(tok: token.Token) bool {
+    return switch (tok) {
+        .Word => true,
+        else => false,
+    };
 }
 
 fn isRedir(tok: token.Token) bool {

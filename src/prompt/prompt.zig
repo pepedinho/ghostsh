@@ -19,7 +19,10 @@ pub fn receivePrompt(env: *const std.process.EnvMap) !void {
         };
         parser.parse(allocator, command_line, env) catch |err| {
             switch (err) {
-                inline else => std.debug.print("gsh: error: {s}\n", .{@errorName(err)}),
+                parser.ParseError.UnexpectedTokenOpenParenthesis => {
+                    std.debug.print("gsh: syntax error near unexpected token `('");
+                },
+                else => std.debug.print("gsh: error: {s}\n", .{@errorName(err)}),
             }
             rl.free(command_line);
             clearArena(&arena, command_line);
