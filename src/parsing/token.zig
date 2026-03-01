@@ -79,6 +79,24 @@ pub fn debugPrint(token: Token) void {
     }
 }
 
+fn trim(str: []const u8, target: []const u8) []const u8 {
+    if (target.len == 0)
+        return str;
+
+    var start: usize = 0;
+    var end: usize = str.len;
+
+    while (start < end and std.mem.indexOfScalar(u8, target, str[start]) != null) {
+        start += 1;
+    }
+
+    while (end > start and std.mem.indexOfScalar(u8, target, str[end - 1]) != null) {
+        end -= 1;
+    }
+
+    return str[start..end];
+}
+
 fn extractWord(line_lex: *LineLex, env: *const std.process.EnvMap, allocator: std.mem.Allocator) ![]const u8 {
     const line = line_lex.line;
     const start = line_lex.index;
@@ -113,11 +131,12 @@ fn extractWord(line_lex: *LineLex, env: *const std.process.EnvMap, allocator: st
             std.debug.print("name = {s}\n", .{var_name});
             std.debug.print("value = {s}\n", .{value});
             std.debug.print("expanded = {s}\n", .{expanded.items});
-            return try expanded.toOwnedSlice(allocator);
+            const res = try expanded.toOwnedSlice(allocator);
+            return trim(res, "\"'");
         }
     }
 
-    return line[start .. start + len];
+    return trim(line[start .. start + len], "\"'");
 }
 
 fn extractVarNameByIndex(line: []const u8, index: usize) []const u8 {
