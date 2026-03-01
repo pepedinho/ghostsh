@@ -202,11 +202,6 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: *const std.proce
             },
             else => {
                 const word = try extractWord(&line_lex, env, allocator);
-                if (word.len == 0) {
-                    line_lex.incrementNbIndex(1);
-                    continue;
-                }
-
                 try tokens.append(allocator, Token{ .Word = Word{ .Undefined = word } });
             },
         }
