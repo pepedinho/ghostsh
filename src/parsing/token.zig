@@ -109,10 +109,10 @@ fn extractWord(line_lex: *LineLex, env: *const std.process.EnvMap, allocator: st
             const value = env.get(var_name) orelse "";
             try expanded.appendSlice(allocator, value);
             try expanded.appendSlice(allocator, line[start + pos + var_name.len + 1 .. start + len]);
-            std.debug.print("find '$' in dquotes at index '{d}'\n", .{pos});
-            std.debug.print("name = {s}\n", .{var_name});
-            std.debug.print("value = {s}\n", .{value});
-            std.debug.print("expanded = {s}\n", .{expanded.items});
+            // std.debug.print("find '$' in dquotes at index '{d}'\n", .{pos});
+            // std.debug.print("name = {s}\n", .{var_name});
+            // std.debug.print("value = {s}\n", .{value});
+            // std.debug.print("expanded = {s}\n", .{expanded.items});
             const res = try expanded.toOwnedSlice(allocator);
             return utils.trim(res, "\"'");
         }
