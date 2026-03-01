@@ -8,10 +8,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v1
+      - name: Install Zig 0.15.2
+        uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+
+      - name: Cache .zig-cache
+        uses: actions/cache@v4
+        with:
+          path: .zig-cache
+          key: zig-${{ matrix.target }}-${{ hashFiles('src/**/*.zig', 'build.zig') }}
+          restore-keys: zig-${{ matrix.target }}-
 
       - name: Install Dependencies
         run: |
@@ -25,4 +32,4 @@ jobs:
         run: zig build
 
       - name: Run Unit Tests
-        run: zig build test
+        run: zig build test --summary all
