@@ -1,0 +1,32 @@
+name: Zig CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.15.2
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libreadline-dev
+
+      - name: Check Formatting
+        run: zig fmt --check .
+
+      - name: Build
+        run: zig build
+
+      - name: Run Unit Tests
+        run: zig build test
