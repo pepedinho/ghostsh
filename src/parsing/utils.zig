@@ -27,3 +27,21 @@ pub fn printToken(tokens: []token.Token) void {
         debugPrint(tok);
     }
 }
+
+pub fn trim(str: []const u8, target: []const u8) []const u8 {
+    if (target.len == 0)
+        return str;
+
+    var start: usize = 0;
+    var end: usize = str.len;
+
+    while (start < end and std.mem.indexOfScalar(u8, target, str[start]) != null) {
+        start += 1;
+    }
+
+    while (end > start and std.mem.indexOfScalar(u8, target, str[end - 1]) != null) {
+        end -= 1;
+    }
+
+    return str[start..end];
+}

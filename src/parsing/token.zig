@@ -113,11 +113,12 @@ fn extractWord(line_lex: *LineLex, env: *const std.process.EnvMap, allocator: st
             std.debug.print("name = {s}\n", .{var_name});
             std.debug.print("value = {s}\n", .{value});
             std.debug.print("expanded = {s}\n", .{expanded.items});
-            return try expanded.toOwnedSlice(allocator);
+            const res = try expanded.toOwnedSlice(allocator);
+            return utils.trim(res, "\"'");
         }
     }
 
-    return line[start .. start + len];
+    return utils.trim(line[start .. start + len], "\"'");
 }
 
 fn extractVarNameByIndex(line: []const u8, index: usize) []const u8 {
@@ -201,11 +202,6 @@ pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: *const std.proce
             },
             else => {
                 const word = try extractWord(&line_lex, env, allocator);
-                if (word.len == 0) {
-                    line_lex.incrementNbIndex(1);
-                    continue;
-                }
-
                 try tokens.append(allocator, Token{ .Word = Word{ .Undefined = word } });
             },
         }
