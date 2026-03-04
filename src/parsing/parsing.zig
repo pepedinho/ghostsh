@@ -109,6 +109,8 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *const
     try resoveTokens(tokens);
 
     utils.printToken(tokens);
+
+    _ = try @import("../core/exec.zig").build_tree(tokens, allocator);
 }
 
 fn isRedir(tok: token.Token) bool {
