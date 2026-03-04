@@ -71,13 +71,8 @@ fn resolveWord(tokens: []token.Token, i: usize, str: []const u8) token.Word {
     };
 }
 
-pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *const std.process.EnvMap) !void {
-    const full_line = checkUncloseElements(allocator, command_line);
-
-    const tokens = try token.lex(allocator, full_line, env);
-
-    if (tokens.len == 0) return;
-
+// this function check the validity of the whole tokens slice and deducte Word type
+fn resoveTokens(tokens: []token.Token) !void {
     for (tokens, 0..) |*tok, i| {
         switch (tok.*) {
             .Pipe, .And, .AndAnd => {
@@ -102,6 +97,17 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *const
             },
         }
     }
+}
+
+pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *const std.process.EnvMap) !void {
+    const full_line = checkUncloseElements(allocator, command_line);
+
+    const tokens = try token.lex(allocator, full_line, env);
+
+    if (tokens.len == 0) return;
+
+    try resoveTokens(tokens);
+
     utils.printToken(tokens);
 }
 
