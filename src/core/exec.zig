@@ -27,7 +27,7 @@ fn get_priority(tok: Token) u8 {
     return switch (tok) {
         .LRedir, .RRedir, .Heredoc, .ARRedir => 3,
         .Pipe => 2,
-        .And => 1,
+        .And, .AndAnd => 1,
         else => NO_PRIO,
     };
 }
@@ -41,7 +41,7 @@ fn fromTokenToOp(tok: Token) ?Separator {
     };
 }
 
-pub fn build_tree(tokens: []Token, allocator: std.mem.Allocator) !*Node {
+pub fn build_tree(tokens: []const Token, allocator: std.mem.Allocator) !*Node {
     var last_priority: u8 = NO_PRIO;
     var split_index: ?usize = null;
 
@@ -128,13 +128,13 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                 argv[i] = (try allocator.dupeZ(u8, arg)).ptr;
             }
             argv[cmd.args.len] = null;
+            const envp = try convertEnvToPosix(env, allocator);
 
             const pid = try std.posix.fork();
             if (pid == 0) {
                 const file = argv[0].?;
                 const argv_ptr: [*:null]const ?[*:0]const u8 = @ptrCast(argv.ptr);
 
-                const envp = try convertEnvToPosix(env, allocator);
                 const err = std.posix.execvpeZ(file, argv_ptr, envp);
 
                 std.debug.print("gsh: {s}: {s}\n", .{ cmd.args[0], @errorName(err) });
