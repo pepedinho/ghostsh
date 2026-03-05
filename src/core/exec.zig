@@ -1,5 +1,4 @@
 pub const Separator = enum {
-    Command,
     Pipe,
     LogicalAnd,
     LogicalOr,
@@ -94,4 +93,81 @@ pub fn build_tree(tokens: []Token, allocator: std.mem.Allocator) !*Node {
     }
 
     return node;
+}
+
+fn convertEnvToPosix(env: *const std.process.EnvMap, allocator: std.mem.Allocator) ![*:null]const ?[*:0]const u8 {
+    var envp_array = try allocator.alloc(?[*:0]const u8, env.count() + 1);
+
+    var iter = env.iterator();
+    var env_idx: usize = 0;
+
+    while (iter.next()) |entry| {
+        const tmp_str = try std.fmt.allocPrint(allocator, "{s}={s}", .{ entry.key_ptr.*, entry.value_ptr.* });
+        defer allocator.free(tmp_str);
+
+        const env_str = try allocator.dupeZ(u8, tmp_str);
+
+        envp_array[env_idx] = env_str.ptr;
+        env_idx += 1;
+    }
+    envp_array[env.count()] = null;
+
+    return @ptrCast(envp_array.ptr);
+}
+
+pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.process.EnvMap) !void {
+    switch (node.*) {
+        .Command => |cmd| {
+            if (cmd.args.len == 0) return;
+
+            std.debug.print("prepare command: {s}\n", .{cmd.args[0]});
+
+            var argv = try allocator.alloc(?[*:0]const u8, cmd.args.len + 1);
+
+            for (cmd.args, 0..) |arg, i| {
+                argv[i] = (try allocator.dupeZ(u8, arg)).ptr;
+            }
+            argv[cmd.args.len] = null;
+
+            const pid = try std.posix.fork();
+            if (pid == 0) {
+                const file = argv[0].?;
+                const argv_ptr: [*:null]const ?[*:0]const u8 = @ptrCast(argv.ptr);
+
+                const envp = try convertEnvToPosix(env, allocator);
+                const err = std.posix.execvpeZ(file, argv_ptr, envp);
+
+                std.debug.print("gsh: {s}: {s}\n", .{ cmd.args[0], @errorName(err) });
+                std.posix.exit(1);
+            } else {
+                _ = std.posix.waitpid(pid, 0);
+            }
+
+            //TODO: fork & exec
+        },
+        .Op => |op| {
+            switch (op.kind) {
+                .Pipe => {
+                    std.debug.print("create pipe\n", .{});
+                    //TODO: create pipe std.posix.pipe()
+                    //fork() left
+                    //fork() right
+                    //close fd
+                    //wait childs
+                },
+                .LogicalAnd => {
+                    std.debug.print("eval logical and\n", .{});
+
+                    //TODO: execTree(left)
+                    //if not failed -> execTree(right)
+                },
+                .LogicalOr => {
+                    //TODO: same as AND but execut right only if left failed
+                },
+                .Redirect => {
+                    //TODO: open(), dup2() STDIN/STDOUT, execTree(left)
+                },
+            }
+        },
+    }
 }

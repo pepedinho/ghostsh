@@ -4,6 +4,7 @@ const utils = @import("utils.zig");
 const rl = @import("../readline.zig");
 
 const ArrayList = std.ArrayList;
+const core = @import("../core/exec.zig");
 
 pub const ParseError = error{
     InvalidRedirection, // e.g  > |
@@ -110,7 +111,8 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *const
 
     utils.printToken(tokens);
 
-    _ = try @import("../core/exec.zig").build_tree(tokens, allocator);
+    const tree = try core.build_tree(tokens, allocator);
+    try core.execTree(tree, allocator, env);
 }
 
 fn isRedir(tok: token.Token) bool {
