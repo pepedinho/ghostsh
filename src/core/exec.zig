@@ -142,18 +142,40 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
             } else {
                 _ = std.posix.waitpid(pid, 0);
             }
-
-            //TODO: fork & exec
         },
         .Op => |op| {
             switch (op.kind) {
                 .Pipe => {
                     std.debug.print("create pipe\n", .{});
-                    //TODO: create pipe std.posix.pipe()
-                    //fork() left
-                    //fork() right
-                    //close fd
-                    //wait childs
+                    const pipe = try std.posix.pipe();
+
+                    const left_pid = try std.posix.fork();
+                    if (left_pid == 0) {
+                        try std.posix.dup2(pipe[1], std.posix.STDOUT_FILENO);
+
+                        std.posix.close(pipe[0]);
+                        std.posix.close(pipe[1]);
+
+                        try execTree(op.left, allocator, env);
+                        std.posix.exit(0);
+                    }
+
+                    const right_pid = try std.posix.fork();
+                    if (right_pid == 0) {
+                        try std.posix.dup2(pipe[0], std.posix.STDIN_FILENO);
+
+                        std.posix.close(pipe[0]);
+                        std.posix.close(pipe[1]);
+
+                        try execTree(op.right, allocator, env);
+                        std.posix.exit(0);
+                    }
+
+                    std.posix.close(pipe[0]);
+                    std.posix.close(pipe[1]);
+
+                    _ = std.posix.waitpid(left_pid, 0);
+                    _ = std.posix.waitpid(right_pid, 0);
                 },
                 .LogicalAnd => {
                     std.debug.print("eval logical and\n", .{});
