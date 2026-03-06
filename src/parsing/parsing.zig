@@ -4,6 +4,7 @@ const utils = @import("utils.zig");
 const rl = @import("../readline.zig");
 
 const ArrayList = std.ArrayList;
+const core = @import("../core/exec.zig");
 
 pub const ParseError = error{
     InvalidRedirection, // e.g  > |
@@ -71,13 +72,8 @@ fn resolveWord(tokens: []token.Token, i: usize, str: []const u8) token.Word {
     };
 }
 
-pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *const std.process.EnvMap) !void {
-    const full_line = checkUncloseElements(allocator, command_line);
-
-    const tokens = try token.lex(allocator, full_line, env);
-
-    if (tokens.len == 0) return;
-
+// This function checks the validity of the whole tokens slice and deduces Word types.
+fn resolveTokens(tokens: []token.Token) !void {
     for (tokens, 0..) |*tok, i| {
         switch (tok.*) {
             .Pipe, .And, .AndAnd => {
@@ -102,7 +98,21 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *const
             },
         }
     }
+}
+
+pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *const std.process.EnvMap) !void {
+    const full_line = checkUncloseElements(allocator, command_line);
+
+    const tokens = try token.lex(allocator, full_line, env);
+
+    if (tokens.len == 0) return;
+
+    try resolveTokens(tokens);
+
     utils.printToken(tokens);
+
+    const tree = try core.build_tree(tokens, allocator);
+    try core.execTree(tree, allocator, env);
 }
 
 fn isRedir(tok: token.Token) bool {

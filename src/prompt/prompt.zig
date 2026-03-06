@@ -25,7 +25,6 @@ pub fn receivePrompt(env: *const std.process.EnvMap) !void {
             clearArena(&arena, command_line);
             continue;
         };
-        std.debug.print("{s}\n", .{command_line});
 
         rl.free(command_line);
         clearArena(&arena, command_line);
