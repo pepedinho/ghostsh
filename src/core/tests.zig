@@ -42,10 +42,8 @@ test "AST: simple command without operators" {
 
     const tree = try core.build_tree(&tokens, allocator);
 
-    // On s'attend à ce que la racine soit directement une commande
     try std.testing.expectEqual(.Command, std.meta.activeTag(tree.*));
 
-    // On vérifie que tous les arguments ont bien été parsés
     try std.testing.expectEqual(@as(usize, 3), tree.Command.args.len);
     try std.testing.expectEqualStrings("ls", tree.Command.args[0]);
     try std.testing.expectEqualStrings("-l", tree.Command.args[1]);

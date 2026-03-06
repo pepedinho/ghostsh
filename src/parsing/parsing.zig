@@ -72,8 +72,8 @@ fn resolveWord(tokens: []token.Token, i: usize, str: []const u8) token.Word {
     };
 }
 
-// this function check the validity of the whole tokens slice and deducte Word type
-fn resoveTokens(tokens: []token.Token) !void {
+// This function checks the validity of the whole tokens slice and deduces Word types.
+fn resolveTokens(tokens: []token.Token) !void {
     for (tokens, 0..) |*tok, i| {
         switch (tok.*) {
             .Pipe, .And, .AndAnd => {
@@ -107,7 +107,7 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *const
 
     if (tokens.len == 0) return;
 
-    try resoveTokens(tokens);
+    try resolveTokens(tokens);
 
     utils.printToken(tokens);
 

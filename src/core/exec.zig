@@ -18,6 +18,10 @@ pub const Node = union(enum) {
     },
 };
 
+pub const ExecError = error{
+    InvalidSeparator,
+};
+
 const std = @import("std");
 const token = @import("../parsing/token.zig");
 const Token = token.Token;
@@ -59,11 +63,13 @@ pub fn build_tree(tokens: []const Token, allocator: std.mem.Allocator) !*Node {
         std.debug.print("top of the tree : tokens[{d}]\n", .{idx});
         const left = tokens[0..idx];
         const right = tokens[idx + 1 ..];
-        const kind = fromTokenToOp(tokens[idx]);
+        const kind = fromTokenToOp(tokens[idx]) orelse {
+            return ExecError.InvalidSeparator;
+        };
 
         node.* = .{
             .Op = .{
-                .kind = kind.?,
+                .kind = kind,
                 .left = try build_tree(left, allocator),
                 .right = try build_tree(right, allocator),
             },
@@ -76,6 +82,7 @@ pub fn build_tree(tokens: []const Token, allocator: std.mem.Allocator) !*Node {
                 .Word => |w| switch (w) {
                     .Command => |s| s,
                     .Arg => |s| s,
+                    //INFO: for now .File is not implemented
                     else => unreachable,
                 },
                 else => unreachable,
@@ -120,7 +127,7 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
         .Command => |cmd| {
             if (cmd.args.len == 0) return;
 
-            std.debug.print("prepare command: {s}\n", .{cmd.args[0]});
+            // std.debug.print("prepare command: {s}\n", .{cmd.args[0]});
 
             var argv = try allocator.alloc(?[*:0]const u8, cmd.args.len + 1);
 
