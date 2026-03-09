@@ -1,6 +1,7 @@
 const std = @import("std");
 const ArrayList = std.ArrayList;
 const utils = @import("utils.zig");
+const logger = @import("../logger/logger.zig");
 
 pub const LineLex = struct {
     line: []const u8,
@@ -48,32 +49,32 @@ pub const Word = union(enum) {
 pub fn debugPrint(token: Token) void {
     switch (token) {
         .Pipe => {
-            std.debug.print("Token::Pipe\n", .{});
+            logger.debug("Token::Pipe\n", .{});
         },
         .Heredoc => {
-            std.debug.print("Token::Heredoc\n", .{});
+            logger.debug("Token::Heredoc\n", .{});
         },
         .LRedir => {
-            std.debug.print("Token::LRedir\n", .{});
+            logger.debug("Token::LRedir\n", .{});
         },
         .RRedir => {
-            std.debug.print("Token::RRedir\n", .{});
+            logger.debug("Token::RRedir\n", .{});
         },
         .ARRedir => {
-            std.debug.print("Token::ARRedir\n", .{});
+            logger.debug("Token::ARRedir\n", .{});
         },
         .And => {
-            std.debug.print("Token::And\n", .{});
+            logger.debug("Token::And\n", .{});
         },
         .AndAnd => {
-            std.debug.print("Token::AndAnd\n", .{});
+            logger.debug("Token::AndAnd\n", .{});
         },
         .Word => |word_union| {
             switch (word_union) {
-                .Command => |word| std.debug.print("Token::Word::Command(\"{s}\")\n", .{word}),
-                .Arg => |word| std.debug.print("Token::Word::Arg(\"{s}\")\n", .{word}),
-                .File => |word| std.debug.print("Token::Word::File(\"{s}\")\n", .{word}),
-                .Undefined => |word| std.debug.print("Token::Word::Undefined(\"{s}\")\n", .{word}),
+                .Command => |word| logger.debug("Token::Word::Command(\"{s}\")\n", .{word}),
+                .Arg => |word| logger.debug("Token::Word::Arg(\"{s}\")\n", .{word}),
+                .File => |word| logger.debug("Token::Word::File(\"{s}\")\n", .{word}),
+                .Undefined => |word| logger.debug("Token::Word::Undefined(\"{s}\")\n", .{word}),
             }
         },
     }
