@@ -80,8 +80,7 @@ pub fn build_tree(tokens: []const Token, allocator: std.mem.Allocator) !*Node {
         for (tokens, 0..) |tok, i| {
             args[i] = switch (tok) {
                 .Word => |w| switch (w) {
-                    .Command => |s| s,
-                    .Arg => |s| s,
+                    .Command, .Arg, .File => |s| s,
                     //INFO: for now .File is not implemented
                     else => unreachable,
                 },
@@ -195,6 +194,32 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                 },
                 .Redirect => {
                     //TODO: open(), dup2() STDIN/STDOUT, execTree(left)
+                    const filename = op.right.Command.args[0];
+                    const file_z = try allocator.dupeZ(u8, filename);
+
+                    const flags = std.posix.O{
+                        .ACCMODE = .WRONLY,
+                        .CREAT = true,
+                        .TRUNC = true,
+                    };
+
+                    const fd = std.posix.openZ(file_z, flags, 0o666) catch |err| {
+                        std.debug.print("gsh: {s}: {s}\n", .{ filename, @errorName(err) });
+                        return;
+                    };
+
+                    const og_stdout = try std.posix.dup(std.posix.STDOUT_FILENO);
+
+                    try std.posix.dup2(fd, std.posix.STDOUT_FILENO);
+                    std.posix.close(fd);
+                    defer {
+                        std.posix.dup2(og_stdout, std.posix.STDOUT_FILENO) catch |err| {
+                            std.debug.print("gsh: erreur critique en restaurant stdout: {s}\n", .{@errorName(err)});
+                        };
+                        std.posix.close(og_stdout);
+                    }
+
+                    try execTree(op.left, allocator, env);
                 },
             }
         },
