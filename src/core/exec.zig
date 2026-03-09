@@ -25,6 +25,7 @@ pub const ExecError = error{
 const std = @import("std");
 const token = @import("../parsing/token.zig");
 const Token = token.Token;
+const logger = @import("../logger/logger.zig");
 const NO_PRIO: u8 = 255;
 
 fn get_priority(tok: Token) u8 {
@@ -60,7 +61,7 @@ pub fn build_tree(tokens: []const Token, allocator: std.mem.Allocator) !*Node {
     const node = try allocator.create(Node);
 
     if (split_index) |idx| {
-        std.debug.print("top of the tree : tokens[{d}]\n", .{idx});
+        logger.debug("top of the tree : tokens[{d}]\n", .{idx});
         const left = tokens[0..idx];
         const right = tokens[idx + 1 ..];
         const kind = fromTokenToOp(tokens[idx]) orelse {
@@ -88,7 +89,7 @@ pub fn build_tree(tokens: []const Token, allocator: std.mem.Allocator) !*Node {
             };
         }
 
-        std.debug.print("leaf : [{s}]\n", .{args[0]});
+        logger.debug("leaf : [{s}]\n", .{args[0]});
 
         node.* = .{
             .Command = .{
@@ -152,7 +153,7 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
         .Op => |op| {
             switch (op.kind) {
                 .Pipe => {
-                    std.debug.print("create pipe\n", .{});
+                    logger.debug("create pipe\n", .{});
                     const pipe = try std.posix.pipe();
 
                     const left_pid = try std.posix.fork();
@@ -184,7 +185,7 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                     _ = std.posix.waitpid(right_pid, 0);
                 },
                 .LogicalAnd => {
-                    std.debug.print("eval logical and\n", .{});
+                    logger.debug("eval logical and\n", .{});
 
                     //TODO: execTree(left)
                     //if not failed -> execTree(right)
