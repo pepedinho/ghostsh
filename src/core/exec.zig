@@ -1,21 +1,30 @@
-pub const Separator = enum {
+pub const Separator = union(enum) {
     Pipe,
     LogicalAnd,
     LogicalOr,
-    Redirect,
+    Redirect: Redirect,
+};
+
+pub const Redirect = enum {
+    Heredoc, // <<
+    LRedir, // <
+    RRedir, // >
+    ARRedir, // >>
+};
+
+pub const Op = struct {
+    kind: Separator,
+    left: *Node,
+    right: *Node,
+};
+pub const Command = struct {
+    args: []const []const u8,
+    redirect_file: ?[]const u8 = null,
 };
 
 pub const Node = union(enum) {
-    Command: struct {
-        args: []const []const u8,
-        redirect_file: ?[]const u8 = null,
-    },
-
-    Op: struct {
-        kind: Separator,
-        left: *Node,
-        right: *Node,
-    },
+    Command: Command,
+    Op: Op,
 };
 
 pub const ExecError = error{
@@ -27,6 +36,8 @@ const token = @import("../parsing/token.zig");
 const Token = token.Token;
 const logger = @import("../logger/logger.zig");
 const NO_PRIO: u8 = 255;
+const TRUNC: u8 = 0;
+const APPEND: u8 = 1;
 
 fn get_priority(tok: Token) u8 {
     return switch (tok) {
@@ -37,9 +48,19 @@ fn get_priority(tok: Token) u8 {
     };
 }
 
+fn resolveRedirect(tok: Token) ?Redirect {
+    return switch (tok) {
+        .ARRedir => Redirect.ARRedir,
+        .Heredoc => Redirect.Heredoc,
+        .LRedir => Redirect.LRedir,
+        .RRedir => Redirect.RRedir,
+        else => null,
+    };
+}
+
 fn fromTokenToOp(tok: Token) ?Separator {
     return switch (tok) {
-        .ARRedir, .Heredoc, .LRedir, .RRedir => Separator.Redirect,
+        .ARRedir, .Heredoc, .LRedir, .RRedir => Separator{ .Redirect = resolveRedirect(tok).? },
         .Pipe => Separator.Pipe,
         .AndAnd => Separator.LogicalAnd,
         .And, .Word => null,
@@ -122,6 +143,8 @@ fn convertEnvToPosix(env: *const std.process.EnvMap, allocator: std.mem.Allocato
     return @ptrCast(envp_array.ptr);
 }
 
+pub const AnyExecError = ExecError || std.mem.Allocator.Error || std.posix.OpenError || std.posix.ForkError;
+
 pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.process.EnvMap) !void {
     switch (node.*) {
         .Command => |cmd| {
@@ -150,7 +173,7 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                 _ = std.posix.waitpid(pid, 0);
             }
         },
-        .Op => |op| {
+        .Op => |*op| {
             switch (op.kind) {
                 .Pipe => {
                     logger.debug("create pipe\n", .{});
@@ -193,36 +216,45 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                 .LogicalOr => {
                     //TODO: same as AND but execut right only if left failed
                 },
-                .Redirect => {
-                    //TODO: open(), dup2() STDIN/STDOUT, execTree(left)
-                    const filename = op.right.Command.args[0];
-                    const file_z = try allocator.dupeZ(u8, filename);
-
-                    const flags = std.posix.O{
-                        .ACCMODE = .WRONLY,
-                        .CREAT = true,
-                        .TRUNC = true,
-                    };
-
-                    const fd = std.posix.openZ(file_z, flags, 0o666) catch |err| {
-                        std.debug.print("gsh: {s}: {s}\n", .{ filename, @errorName(err) });
-                        return;
-                    };
-
-                    const og_stdout = try std.posix.dup(std.posix.STDOUT_FILENO);
-
-                    try std.posix.dup2(fd, std.posix.STDOUT_FILENO);
-                    std.posix.close(fd);
-                    defer {
-                        std.posix.dup2(og_stdout, std.posix.STDOUT_FILENO) catch |err| {
-                            std.debug.print("gsh: erreur critique en restaurant stdout: {s}\n", .{@errorName(err)});
-                        };
-                        std.posix.close(og_stdout);
+                .Redirect => |r| {
+                    switch (r) {
+                        .RRedir => try rredir(op, TRUNC, allocator, env),
+                        .ARRedir => try rredir(op, APPEND, allocator, env),
+                        else => {},
                     }
-
-                    try execTree(op.left, allocator, env);
                 },
             }
         },
     }
+}
+
+fn rredir(op: *Op, f: u8, allocator: std.mem.Allocator, env: *const std.process.EnvMap) AnyExecError!void {
+    const filename = op.right.Command.args[0];
+    const file_z = try allocator.dupeZ(u8, filename);
+
+    logger.debug("FLAG: {d}\n", .{f});
+    const flags = std.posix.O{
+        .ACCMODE = .WRONLY,
+        .CREAT = true,
+        .TRUNC = if (f == TRUNC) true else false,
+        .APPEND = if (f == APPEND) true else false,
+    };
+
+    const fd = std.posix.openZ(file_z, flags, 0o666) catch |err| {
+        std.debug.print("gsh: {s}: {s}\n", .{ filename, @errorName(err) });
+        return;
+    };
+
+    const og_stdout = try std.posix.dup(std.posix.STDOUT_FILENO);
+
+    try std.posix.dup2(fd, std.posix.STDOUT_FILENO);
+    std.posix.close(fd);
+    defer {
+        std.posix.dup2(og_stdout, std.posix.STDOUT_FILENO) catch |err| {
+            std.debug.print("gsh: erreur critique en restaurant stdout: {s}\n", .{@errorName(err)});
+        };
+        std.posix.close(og_stdout);
+    }
+
+    try execTree(op.left, allocator, env);
 }
