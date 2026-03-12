@@ -3,7 +3,21 @@ const builtin = @import("builtin");
 const rl = @import("prompt/prompt.zig");
 const logger = @import("logger/logger.zig");
 
+fn handleSig(sig_num: c_int) callconv(.c) void {
+    std.log.debug("SIGNAL: {d}", .{sig_num});
+}
+
 pub fn main() !void {
+    const action = std.posix.Sigaction{
+        .handler = .{ .handler = handleSig },
+        .mask = std.posix.sigemptyset(),
+        .flags = 0,
+    };
+
+    std.posix.sigaction(std.posix.SIG.INT, &action, null);
+    std.posix.sigaction(std.posix.SIG.TERM, &action, null);
+    std.posix.sigaction(std.posix.SIG.USR1, &action, null);
+
     const buffer: [4096]u8 = undefined;
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
