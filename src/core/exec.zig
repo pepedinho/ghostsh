@@ -2,20 +2,23 @@ pub const Separator = enum {
     Pipe,
     LogicalAnd,
     LogicalOr,
-    Redirect,
+};
+
+pub const Op = struct {
+    kind: Separator,
+    left: *Node,
+    right: *Node,
+};
+pub const Command = struct {
+    args: []const []const u8,
+    in_file: ?[]const u8 = null,
+    out_file: ?[]const u8 = null,
+    append: bool,
 };
 
 pub const Node = union(enum) {
-    Command: struct {
-        args: []const []const u8,
-        redirect_file: ?[]const u8 = null,
-    },
-
-    Op: struct {
-        kind: Separator,
-        left: *Node,
-        right: *Node,
-    },
+    Command: Command,
+    Op: Op,
 };
 
 pub const ExecError = error{
@@ -27,10 +30,11 @@ const token = @import("../parsing/token.zig");
 const Token = token.Token;
 const logger = @import("../logger/logger.zig");
 const NO_PRIO: u8 = 255;
+const TRUNC: u8 = 0;
+const APPEND: u8 = 1;
 
 fn get_priority(tok: Token) u8 {
     return switch (tok) {
-        .LRedir, .RRedir, .Heredoc, .ARRedir => 3,
         .Pipe => 2,
         .And, .AndAnd => 1,
         else => NO_PRIO,
@@ -39,10 +43,20 @@ fn get_priority(tok: Token) u8 {
 
 fn fromTokenToOp(tok: Token) ?Separator {
     return switch (tok) {
-        .ARRedir, .Heredoc, .LRedir, .RRedir => Separator.Redirect,
         .Pipe => Separator.Pipe,
         .AndAnd => Separator.LogicalAnd,
         .And, .Word => null,
+        else => unreachable,
+    };
+}
+
+fn getWordString(tok: Token) []const u8 {
+    return switch (tok) {
+        .Word => |w| switch (w) {
+            .Command, .Arg, .File => |s| s,
+            else => unreachable,
+        },
+        else => unreachable,
     };
 }
 
@@ -76,26 +90,55 @@ pub fn build_tree(tokens: []const Token, allocator: std.mem.Allocator) !*Node {
             },
         };
     } else {
-        var args = try allocator.alloc([]const u8, tokens.len);
+        var args_list: std.ArrayList([]const u8) = .empty;
+        var in_file: ?[]const u8 = null;
+        var out_file: ?[]const u8 = null;
+        var append = false;
 
-        for (tokens, 0..) |tok, i| {
-            args[i] = switch (tok) {
-                .Word => |w| switch (w) {
-                    .Command => |s| s,
-                    .Arg => |s| s,
-                    //INFO: for now .File is not implemented
-                    else => unreachable,
+        var i: usize = 0;
+        while (i < tokens.len) : (i += 1) {
+            const tok = tokens[i];
+
+            switch (tok) {
+                .LRedir => {
+                    if (i + 1 < tokens.len) {
+                        in_file = getWordString(tokens[i + 1]);
+                        i += 1;
+                    }
                 },
-                else => unreachable,
-            };
+                .RRedir => {
+                    if (i + 1 < tokens.len) {
+                        out_file = getWordString(tokens[i + 1]);
+                        i += 1;
+                    }
+                },
+                .ARRedir => {
+                    if (i + 1 < tokens.len) {
+                        out_file = getWordString(tokens[i + 1]);
+                        i += 1;
+                        append = true;
+                    }
+                },
+                .Word => {
+                    const str = getWordString(tok);
+                    try args_list.append(allocator, str);
+                },
+                else => {},
+            }
         }
 
-        logger.debug("leaf : [{s}]\n", .{args[0]});
+        const args = try args_list.toOwnedSlice(allocator);
+
+        if (args.len > 0) {
+            logger.debug("leaf : [{s}]\n", .{args[0]});
+        }
 
         node.* = .{
             .Command = .{
                 .args = args,
-                .redirect_file = null,
+                .in_file = in_file,
+                .out_file = out_file,
+                .append = append,
             },
         };
     }
@@ -140,6 +183,34 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
 
             const pid = try std.posix.fork();
             if (pid == 0) {
+                if (cmd.in_file) |in_file| {
+                    const file_z = try allocator.dupeZ(u8, in_file);
+                    const flags = std.posix.O{ .ACCMODE = .RDONLY };
+                    const fd = std.posix.openZ(file_z, flags, 0) catch |err| {
+                        std.debug.print("gsh: {s}: {s}\n", .{ in_file, @errorName(err) });
+                        std.posix.exit(1);
+                    };
+                    try std.posix.dup2(fd, std.posix.STDIN_FILENO);
+                    std.posix.close(fd);
+                }
+
+                if (cmd.out_file) |out_file| {
+                    const file_z = try allocator.dupeZ(u8, out_file);
+                    const flags = std.posix.O{
+                        .ACCMODE = .WRONLY,
+                        .CREAT = true,
+                        .TRUNC = !cmd.append,
+                        .APPEND = cmd.append,
+                    };
+
+                    const fd = std.posix.openZ(file_z, flags, 0o666) catch |err| {
+                        std.debug.print("gsh: {s}: {s}\n", .{ out_file, @errorName(err) });
+                        std.posix.exit(1);
+                    };
+                    try std.posix.dup2(fd, std.posix.STDOUT_FILENO);
+                    std.posix.close(fd);
+                }
+
                 const file = argv[0].?;
                 const argv_ptr: [*:null]const ?[*:0]const u8 = @ptrCast(argv.ptr);
 
@@ -151,7 +222,7 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                 _ = std.posix.waitpid(pid, 0);
             }
         },
-        .Op => |op| {
+        .Op => |*op| {
             switch (op.kind) {
                 .Pipe => {
                     logger.debug("create pipe\n", .{});
@@ -193,9 +264,6 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                 },
                 .LogicalOr => {
                     //TODO: same as AND but execut right only if left failed
-                },
-                .Redirect => {
-                    //TODO: open(), dup2() STDIN/STDOUT, execTree(left)
                 },
             }
         },
