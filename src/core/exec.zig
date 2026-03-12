@@ -1,14 +1,7 @@
-pub const Separator = union(enum) {
+pub const Separator = enum {
     Pipe,
     LogicalAnd,
     LogicalOr,
-};
-
-pub const Redirect = enum {
-    Heredoc, // <<
-    LRedir, // <
-    RRedir, // >
-    ARRedir, // >>
 };
 
 pub const Op = struct {
@@ -45,16 +38,6 @@ fn get_priority(tok: Token) u8 {
         .Pipe => 2,
         .And, .AndAnd => 1,
         else => NO_PRIO,
-    };
-}
-
-fn resolveRedirect(tok: Token) ?Redirect {
-    return switch (tok) {
-        .ARRedir => Redirect.ARRedir,
-        .Heredoc => Redirect.Heredoc,
-        .LRedir => Redirect.LRedir,
-        .RRedir => Redirect.RRedir,
-        else => null,
     };
 }
 
@@ -183,8 +166,6 @@ fn convertEnvToPosix(env: *const std.process.EnvMap, allocator: std.mem.Allocato
     return @ptrCast(envp_array.ptr);
 }
 
-pub const AnyExecError = ExecError || std.mem.Allocator.Error || std.posix.OpenError || std.posix.ForkError;
-
 pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.process.EnvMap) !void {
     switch (node.*) {
         .Command => |cmd| {
@@ -287,63 +268,4 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
             }
         },
     }
-}
-
-fn rredir(op: *Op, f: u8, allocator: std.mem.Allocator, env: *const std.process.EnvMap) AnyExecError!void {
-    const filename = op.right.Command.args[0];
-    const file_z = try allocator.dupeZ(u8, filename);
-
-    logger.debug("FLAG: {d}\n", .{f});
-    const flags = std.posix.O{
-        .ACCMODE = .WRONLY,
-        .CREAT = true,
-        .TRUNC = if (f == TRUNC) true else false,
-        .APPEND = if (f == APPEND) true else false,
-    };
-
-    const fd = std.posix.openZ(file_z, flags, 0o666) catch |err| {
-        std.debug.print("gsh: {s}: {s}\n", .{ filename, @errorName(err) });
-        return;
-    };
-
-    const og_stdout = try std.posix.dup(std.posix.STDOUT_FILENO);
-
-    try std.posix.dup2(fd, std.posix.STDOUT_FILENO);
-    std.posix.close(fd);
-    defer {
-        std.posix.dup2(og_stdout, std.posix.STDOUT_FILENO) catch |err| {
-            std.debug.print("gsh:  failed to restore stdout: {s}\n", .{@errorName(err)});
-        };
-        std.posix.close(og_stdout);
-    }
-
-    try execTree(op.left, allocator, env);
-}
-
-fn lredir(op: *Op, allocator: std.mem.Allocator, env: *const std.process.EnvMap) AnyExecError!void {
-    const filename = op.left.Command.args[0];
-    const file_z = try allocator.dupeZ(u8, filename);
-
-    const flags = std.posix.O{
-        .ACCMODE = .RDONLY,
-    };
-
-    const fd = std.posix.openZ(file_z, flags, 0o666) catch |err| {
-        std.debug.print("gsh: {s}: {s}\n", .{ filename, @errorName(err) });
-        return;
-    };
-
-    const og_stdin = try std.posix.dup(std.posix.STDIN_FILENO);
-
-    try std.posix.dup2(fd, std.posix.STDIN_FILENO);
-    std.posix.close(fd);
-
-    defer {
-        std.posix.dup2(og_stdin, std.posix.STDIN_FILENO) catch |err| {
-            std.debug.print("gsh:  failed to restore stdin: {s}\n", .{@errorName(err)});
-        };
-        std.posix.close(og_stdin);
-    }
-
-    try execTree(op.right, allocator, env);
 }
