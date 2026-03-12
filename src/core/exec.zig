@@ -2,7 +2,6 @@ pub const Separator = union(enum) {
     Pipe,
     LogicalAnd,
     LogicalOr,
-    Redirect: Redirect,
 };
 
 pub const Redirect = enum {
@@ -19,7 +18,9 @@ pub const Op = struct {
 };
 pub const Command = struct {
     args: []const []const u8,
-    redirect_file: ?[]const u8 = null,
+    in_file: ?[]const u8 = null,
+    out_file: ?[]const u8 = null,
+    append: bool,
 };
 
 pub const Node = union(enum) {
@@ -41,7 +42,6 @@ const APPEND: u8 = 1;
 
 fn get_priority(tok: Token) u8 {
     return switch (tok) {
-        .LRedir, .RRedir, .Heredoc, .ARRedir => 3,
         .Pipe => 2,
         .And, .AndAnd => 1,
         else => NO_PRIO,
@@ -60,10 +60,20 @@ fn resolveRedirect(tok: Token) ?Redirect {
 
 fn fromTokenToOp(tok: Token) ?Separator {
     return switch (tok) {
-        .ARRedir, .Heredoc, .LRedir, .RRedir => Separator{ .Redirect = resolveRedirect(tok).? },
         .Pipe => Separator.Pipe,
         .AndAnd => Separator.LogicalAnd,
         .And, .Word => null,
+        else => unreachable,
+    };
+}
+
+fn getWordString(tok: Token) []const u8 {
+    return switch (tok) {
+        .Word => |w| switch (w) {
+            .Command, .Arg, .File => |s| s,
+            else => unreachable,
+        },
+        else => unreachable,
     };
 }
 
@@ -97,25 +107,55 @@ pub fn build_tree(tokens: []const Token, allocator: std.mem.Allocator) !*Node {
             },
         };
     } else {
-        var args = try allocator.alloc([]const u8, tokens.len);
+        var args_list: std.ArrayList([]const u8) = .empty;
+        var in_file: ?[]const u8 = null;
+        var out_file: ?[]const u8 = null;
+        var append = false;
 
-        for (tokens, 0..) |tok, i| {
-            args[i] = switch (tok) {
-                .Word => |w| switch (w) {
-                    .Command, .Arg, .File => |s| s,
-                    //INFO: for now .File is not implemented
-                    else => unreachable,
+        var i: usize = 0;
+        while (i < tokens.len) : (i += 1) {
+            const tok = tokens[i];
+
+            switch (tok) {
+                .LRedir => {
+                    if (i + 1 < tokens.len) {
+                        in_file = getWordString(tokens[i + 1]);
+                        i += 1;
+                    }
                 },
-                else => unreachable,
-            };
+                .RRedir => {
+                    if (i + 1 < tokens.len) {
+                        out_file = getWordString(tokens[i + 1]);
+                        i += 1;
+                    }
+                },
+                .ARRedir => {
+                    if (i + 1 < tokens.len) {
+                        out_file = getWordString(tokens[i + 1]);
+                        i += 1;
+                        append = true;
+                    }
+                },
+                .Word => {
+                    const str = getWordString(tok);
+                    try args_list.append(allocator, str);
+                },
+                else => {},
+            }
         }
 
-        logger.debug("leaf : [{s}]\n", .{args[0]});
+        const args = try args_list.toOwnedSlice(allocator);
+
+        if (args.len > 0) {
+            logger.debug("leaf : [{s}]\n", .{args[0]});
+        }
 
         node.* = .{
             .Command = .{
                 .args = args,
-                .redirect_file = null,
+                .in_file = in_file,
+                .out_file = out_file,
+                .append = append,
             },
         };
     }
@@ -162,6 +202,34 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
 
             const pid = try std.posix.fork();
             if (pid == 0) {
+                if (cmd.in_file) |in_file| {
+                    const file_z = try allocator.dupeZ(u8, in_file);
+                    const flags = std.posix.O{ .ACCMODE = .RDONLY };
+                    const fd = std.posix.openZ(file_z, flags, 0) catch |err| {
+                        std.debug.print("gsh: {s}: {s}\n", .{ in_file, @errorName(err) });
+                        std.posix.exit(1);
+                    };
+                    try std.posix.dup2(fd, std.posix.STDIN_FILENO);
+                    std.posix.close(fd);
+                }
+
+                if (cmd.out_file) |out_file| {
+                    const file_z = try allocator.dupeZ(u8, out_file);
+                    const flags = std.posix.O{
+                        .ACCMODE = .WRONLY,
+                        .CREAT = true,
+                        .TRUNC = !cmd.append,
+                        .APPEND = cmd.append,
+                    };
+
+                    const fd = std.posix.openZ(file_z, flags, 0o666) catch |err| {
+                        std.debug.print("gsh: {s}: {s}\n", .{ out_file, @errorName(err) });
+                        std.posix.exit(1);
+                    };
+                    try std.posix.dup2(fd, std.posix.STDOUT_FILENO);
+                    std.posix.close(fd);
+                }
+
                 const file = argv[0].?;
                 const argv_ptr: [*:null]const ?[*:0]const u8 = @ptrCast(argv.ptr);
 
@@ -216,13 +284,6 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                 .LogicalOr => {
                     //TODO: same as AND but execut right only if left failed
                 },
-                .Redirect => |r| {
-                    switch (r) {
-                        .RRedir => try rredir(op, TRUNC, allocator, env),
-                        .ARRedir => try rredir(op, APPEND, allocator, env),
-                        else => {},
-                    }
-                },
             }
         },
     }
@@ -251,10 +312,38 @@ fn rredir(op: *Op, f: u8, allocator: std.mem.Allocator, env: *const std.process.
     std.posix.close(fd);
     defer {
         std.posix.dup2(og_stdout, std.posix.STDOUT_FILENO) catch |err| {
-            std.debug.print("gsh: erreur critique en restaurant stdout: {s}\n", .{@errorName(err)});
+            std.debug.print("gsh:  failed to restore stdout: {s}\n", .{@errorName(err)});
         };
         std.posix.close(og_stdout);
     }
 
     try execTree(op.left, allocator, env);
+}
+
+fn lredir(op: *Op, allocator: std.mem.Allocator, env: *const std.process.EnvMap) AnyExecError!void {
+    const filename = op.left.Command.args[0];
+    const file_z = try allocator.dupeZ(u8, filename);
+
+    const flags = std.posix.O{
+        .ACCMODE = .RDONLY,
+    };
+
+    const fd = std.posix.openZ(file_z, flags, 0o666) catch |err| {
+        std.debug.print("gsh: {s}: {s}\n", .{ filename, @errorName(err) });
+        return;
+    };
+
+    const og_stdin = try std.posix.dup(std.posix.STDIN_FILENO);
+
+    try std.posix.dup2(fd, std.posix.STDIN_FILENO);
+    std.posix.close(fd);
+
+    defer {
+        std.posix.dup2(og_stdin, std.posix.STDIN_FILENO) catch |err| {
+            std.debug.print("gsh:  failed to restore stdin: {s}\n", .{@errorName(err)});
+        };
+        std.posix.close(og_stdin);
+    }
+
+    try execTree(op.right, allocator, env);
 }
