@@ -100,7 +100,7 @@ fn resolveTokens(tokens: []token.Token) !void {
     }
 }
 
-pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *const std.process.EnvMap) !void {
+pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *std.process.EnvMap) !void {
     const full_line = checkUncloseElements(allocator, command_line);
 
     const tokens = try token.lex(allocator, full_line, env);
@@ -112,7 +112,7 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *const
     utils.printToken(tokens);
 
     const tree = try core.build_tree(tokens, allocator);
-    try core.execTree(tree, allocator, env);
+    _ = try core.execTree(tree, allocator, env);
 }
 
 fn isRedir(tok: token.Token) bool {

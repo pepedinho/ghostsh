@@ -146,7 +146,7 @@ pub fn build_tree(tokens: []const Token, allocator: std.mem.Allocator) !*Node {
     return node;
 }
 
-fn convertEnvToPosix(env: *const std.process.EnvMap, allocator: std.mem.Allocator) ![*:null]const ?[*:0]const u8 {
+fn convertEnvToPosix(env: *std.process.EnvMap, allocator: std.mem.Allocator) ![*:null]const ?[*:0]const u8 {
     var envp_array = try allocator.alloc(?[*:0]const u8, env.count() + 1);
 
     var iter = env.iterator();
@@ -166,12 +166,29 @@ fn convertEnvToPosix(env: *const std.process.EnvMap, allocator: std.mem.Allocato
     return @ptrCast(envp_array.ptr);
 }
 
-pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.process.EnvMap) !void {
+const builtin = @import("builtins.zig");
+
+fn checkBuiltIn(cmd: []const u8, argv: []const []const u8, allocator: std.mem.Allocator, env: *std.process.EnvMap) ?u8 {
+    if (std.mem.eql(u8, cmd, "cd")) {
+        return builtin.cd(argv, allocator, env);
+    }
+
+    return null;
+}
+
+pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *std.process.EnvMap) !u8 {
     switch (node.*) {
         .Command => |cmd| {
-            if (cmd.args.len == 0) return;
+            if (cmd.args.len == 0) return 0;
 
             // std.debug.print("prepare command: {s}\n", .{cmd.args[0]});
+
+            logger.debug("cmd.len: {d}\n", .{cmd.args.len});
+            const bt = checkBuiltIn(cmd.args[0], cmd.args[1..], allocator, env);
+
+            if (bt != null) {
+                return bt.?;
+            }
 
             var argv = try allocator.alloc(?[*:0]const u8, cmd.args.len + 1);
 
@@ -219,7 +236,13 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                 std.debug.print("gsh: {s}: {s}\n", .{ cmd.args[0], @errorName(err) });
                 std.posix.exit(1);
             } else {
-                _ = std.posix.waitpid(pid, 0);
+                const wait_res = std.posix.waitpid(pid, 0);
+
+                if (std.posix.W.IFEXITED(wait_res.status)) {
+                    return std.posix.W.EXITSTATUS(wait_res.status);
+                }
+
+                return 1;
             }
         },
         .Op => |*op| {
@@ -235,7 +258,7 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                         std.posix.close(pipe[0]);
                         std.posix.close(pipe[1]);
 
-                        try execTree(op.left, allocator, env);
+                        _ = try execTree(op.left, allocator, env);
                         std.posix.exit(0);
                     }
 
@@ -246,24 +269,38 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                         std.posix.close(pipe[0]);
                         std.posix.close(pipe[1]);
 
-                        try execTree(op.right, allocator, env);
+                        _ = try execTree(op.right, allocator, env);
                         std.posix.exit(0);
                     }
 
                     std.posix.close(pipe[0]);
                     std.posix.close(pipe[1]);
 
-                    _ = std.posix.waitpid(left_pid, 0);
-                    _ = std.posix.waitpid(right_pid, 0);
+                    const right_res = std.posix.waitpid(right_pid, 0);
+                    if (std.posix.W.IFEXITED(right_res.status)) {
+                        return std.posix.W.EXITSTATUS(right_res.status);
+                    }
+                    return 1;
                 },
                 .LogicalAnd => {
                     logger.debug("eval logical and\n", .{});
 
-                    //TODO: execTree(left)
-                    //if not failed -> execTree(right)
+                    const left_status = try execTree(op.left, allocator, env);
+
+                    if (left_status == 0) {
+                        return try execTree(op.right, allocator, env);
+                    }
+
+                    return left_status;
                 },
                 .LogicalOr => {
-                    //TODO: same as AND but execut right only if left failed
+                    const left_status = try execTree(op.left, allocator, env);
+
+                    if (left_status != 0) {
+                        return try execTree(op.right, allocator, env);
+                    }
+
+                    return left_status;
                 },
             }
         },
