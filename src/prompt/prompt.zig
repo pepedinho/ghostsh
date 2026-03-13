@@ -59,12 +59,6 @@ pub fn initReadline() void {
     rl.c.rl_catch_signals = 0;
 }
 
-pub fn resetPrompt() void {
-    _ = rl.c.rl_on_new_line();
-    _ = rl.c.rl_replace_line("", 0);
-    _ = rl.c.rl_redisplay();
-}
-
 fn clearArena(arena: *std.heap.ArenaAllocator, command_line: []const u8) void {
     arena_size += command_line.len;
     if (arena_size > ARENA_REINIT_THRESHOLD) {
