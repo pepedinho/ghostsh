@@ -146,7 +146,7 @@ pub fn build_tree(tokens: []const Token, allocator: std.mem.Allocator) !*Node {
     return node;
 }
 
-fn convertEnvToPosix(env: *const std.process.EnvMap, allocator: std.mem.Allocator) ![*:null]const ?[*:0]const u8 {
+fn convertEnvToPosix(env: *std.process.EnvMap, allocator: std.mem.Allocator) ![*:null]const ?[*:0]const u8 {
     var envp_array = try allocator.alloc(?[*:0]const u8, env.count() + 1);
 
     var iter = env.iterator();
@@ -168,15 +168,15 @@ fn convertEnvToPosix(env: *const std.process.EnvMap, allocator: std.mem.Allocato
 
 const builtin = @import("builtins.zig");
 
-fn checkBuiltIn(cmd: []const u8, argv: []const []const u8) ?u8 {
+fn checkBuiltIn(cmd: []const u8, argv: []const []const u8, allocator: std.mem.Allocator, env: *std.process.EnvMap) ?u8 {
     if (std.mem.eql(u8, cmd, "cd")) {
-        return builtin.cd(argv);
+        return builtin.cd(argv, allocator, env);
     }
 
     return null;
 }
 
-pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.process.EnvMap) !u8 {
+pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *std.process.EnvMap) !u8 {
     switch (node.*) {
         .Command => |cmd| {
             if (cmd.args.len == 0) return 0;
@@ -184,7 +184,7 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
             // std.debug.print("prepare command: {s}\n", .{cmd.args[0]});
 
             logger.debug("cmd.len: {d}\n", .{cmd.args.len});
-            const bt = checkBuiltIn(cmd.args[0], cmd.args[1..]);
+            const bt = checkBuiltIn(cmd.args[0], cmd.args[1..], allocator, env);
 
             if (bt != null) {
                 return bt.?;
