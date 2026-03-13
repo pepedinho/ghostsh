@@ -166,12 +166,29 @@ fn convertEnvToPosix(env: *const std.process.EnvMap, allocator: std.mem.Allocato
     return @ptrCast(envp_array.ptr);
 }
 
+const builtin = @import("builtins.zig");
+
+fn checkBuiltIn(cmd: []const u8, argv: []const []const u8) ?u8 {
+    if (std.mem.eql(u8, cmd, "cd")) {
+        return builtin.cd(argv);
+    }
+
+    return null;
+}
+
 pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.process.EnvMap) !u8 {
     switch (node.*) {
         .Command => |cmd| {
             if (cmd.args.len == 0) return 0;
 
             // std.debug.print("prepare command: {s}\n", .{cmd.args[0]});
+
+            logger.debug("cmd.len: {d}\n", .{cmd.args.len});
+            const bt = checkBuiltIn(cmd.args[0], cmd.args[1..]);
+
+            if (bt != null) {
+                return bt.?;
+            }
 
             var argv = try allocator.alloc(?[*:0]const u8, cmd.args.len + 1);
 
