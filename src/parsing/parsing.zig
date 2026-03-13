@@ -112,7 +112,7 @@ pub fn parse(allocator: std.mem.Allocator, command_line: []const u8, env: *const
     utils.printToken(tokens);
 
     const tree = try core.build_tree(tokens, allocator);
-    try core.execTree(tree, allocator, env);
+    _ = try core.execTree(tree, allocator, env);
 }
 
 fn isRedir(tok: token.Token) bool {

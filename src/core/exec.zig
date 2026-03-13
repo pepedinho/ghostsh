@@ -166,10 +166,10 @@ fn convertEnvToPosix(env: *const std.process.EnvMap, allocator: std.mem.Allocato
     return @ptrCast(envp_array.ptr);
 }
 
-pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.process.EnvMap) !void {
+pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.process.EnvMap) !u8 {
     switch (node.*) {
         .Command => |cmd| {
-            if (cmd.args.len == 0) return;
+            if (cmd.args.len == 0) return 0;
 
             // std.debug.print("prepare command: {s}\n", .{cmd.args[0]});
 
@@ -219,7 +219,13 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                 std.debug.print("gsh: {s}: {s}\n", .{ cmd.args[0], @errorName(err) });
                 std.posix.exit(1);
             } else {
-                _ = std.posix.waitpid(pid, 0);
+                const wait_res = std.posix.waitpid(pid, 0);
+
+                if (std.posix.W.IFEXITED(wait_res.status)) {
+                    return std.posix.W.EXITSTATUS(wait_res.status);
+                }
+
+                return 1;
             }
         },
         .Op => |*op| {
@@ -235,7 +241,7 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                         std.posix.close(pipe[0]);
                         std.posix.close(pipe[1]);
 
-                        try execTree(op.left, allocator, env);
+                        _ = try execTree(op.left, allocator, env);
                         std.posix.exit(0);
                     }
 
@@ -246,24 +252,38 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *const std.proce
                         std.posix.close(pipe[0]);
                         std.posix.close(pipe[1]);
 
-                        try execTree(op.right, allocator, env);
+                        _ = try execTree(op.right, allocator, env);
                         std.posix.exit(0);
                     }
 
                     std.posix.close(pipe[0]);
                     std.posix.close(pipe[1]);
 
-                    _ = std.posix.waitpid(left_pid, 0);
-                    _ = std.posix.waitpid(right_pid, 0);
+                    const right_res = std.posix.waitpid(right_pid, 0);
+                    if (std.posix.W.IFEXITED(right_res.status)) {
+                        return std.posix.W.EXITSTATUS(right_res.status);
+                    }
+                    return 1;
                 },
                 .LogicalAnd => {
                     logger.debug("eval logical and\n", .{});
 
-                    //TODO: execTree(left)
-                    //if not failed -> execTree(right)
+                    const left_status = try execTree(op.left, allocator, env);
+
+                    if (left_status == 0) {
+                        return try execTree(op.right, allocator, env);
+                    }
+
+                    return left_status;
                 },
                 .LogicalOr => {
-                    //TODO: same as AND but execut right only if left failed
+                    const left_status = try execTree(op.left, allocator, env);
+
+                    if (left_status != 0) {
+                        return try execTree(op.right, allocator, env);
+                    }
+
+                    return left_status;
                 },
             }
         },
