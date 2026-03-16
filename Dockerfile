@@ -12,6 +12,6 @@ WORKDIR /app
 
 COPY . .
 
-RUN chmod +x stress_test.sh integration_tests.sh
+RUN chmod +x integration_tests.sh
 
 CMD [ "./integration_tests.sh" ]
