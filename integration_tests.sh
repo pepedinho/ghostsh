@@ -44,15 +44,30 @@ run_test() {
   local actual_output
   actual_output=$(cat "$stdout_file" | tr -d '\0')
 
-  if echo "$actual_output" | grep -Fq "$expected_output"; then
-    echo -e "[ ${C_GREEN}OK${C_RESET} ]"
+  if [ -z "$expected_output" ]; then
+    # When no expected output is provided, require that there is no
+    # non-whitespace output on stdout.
+    if echo "$actual_output" | grep -q '[^[:space:]]'; then
+      echo -e "[ ${C_RED}FAIL - LOGIC${C_RESET} ]"
+      echo -e "   ${C_YELLOW}Expected (partial) :${C_RESET} '' (no output)"
+      echo -e "   ${C_YELLOW}Received           :${C_RESET} '$actual_output'"
+      echo -e "   ${C_RED}Errors (stderr)    :${C_RESET}"
+      sed 's/^/      /' "$stderr_file"
+      exit 1
+    else
+      echo -e "[ ${C_GREEN}OK${C_RESET} ]"
+    fi
   else
-    echo -e "[ ${C_RED}FAIL - LOGIC${C_RESET} ]"
-    echo -e "   ${C_YELLOW}Expected (partial) :${C_RESET} '$expected_output'"
-    echo -e "   ${C_YELLOW}Received           :${C_RESET} '$actual_output'"
-    echo -e "   ${C_RED}Errors (stderr)    :${C_RESET}"
-    sed 's/^/      /' "$stderr_file"
-    exit 1
+    if echo "$actual_output" | grep -Fq "$expected_output"; then
+      echo -e "[ ${C_GREEN}OK${C_RESET} ]"
+    else
+      echo -e "[ ${C_RED}FAIL - LOGIC${C_RESET} ]"
+      echo -e "   ${C_YELLOW}Expected (partial) :${C_RESET} '$expected_output'"
+      echo -e "   ${C_YELLOW}Received           :${C_RESET} '$actual_output'"
+      echo -e "   ${C_RED}Errors (stderr)    :${C_RESET}"
+      sed 's/^/      /' "$stderr_file"
+      exit 1
+    fi
   fi
 }
 

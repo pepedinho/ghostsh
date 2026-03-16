@@ -33,7 +33,6 @@ pub fn main() !void {
             std.debug.print("[!]GSH: MEMORY LEAKS DETECTED\n", .{});
             std.posix.exit(42);
         }
-        if (deinit_status == .ok) {}
     }
     const heap_allocator = gpa.allocator();
 

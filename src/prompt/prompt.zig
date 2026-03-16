@@ -8,7 +8,7 @@ const ARENA_REINIT_THRESHOLD = 1000;
 var arena_size: usize = 0;
 pub var sigint_received = std.atomic.Value(bool).init(false);
 
-fn readPipeLine(allocator: std.mem.Allocator) !?[]const u8 {
+fn readPipeline(allocator: std.mem.Allocator) !?[]const u8 {
     var list: std.ArrayList(u8) = .empty;
     errdefer list.deinit(allocator);
 
@@ -58,7 +58,7 @@ pub fn receivePrompt(allocator: std.mem.Allocator, env: *std.process.EnvMap) !vo
                 return;
             }
         } else {
-            command_line = readPipeLine(arena_allocator) catch |err| {
+            command_line = readPipeline(arena_allocator) catch |err| {
                 std.debug.print("gsh: read error: {s}\n", .{@errorName(err)});
                 return;
             };
