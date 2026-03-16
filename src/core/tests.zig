@@ -104,3 +104,60 @@ test "AST: logical AND operator" {
     try std.testing.expectEqual(.Command, std.meta.activeTag(tree.Op.right.*));
     try std.testing.expectEqualStrings("./run", tree.Op.right.Command.args[0]);
 }
+
+test "AST: Exec single leaf" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const tokens = [_]Token{
+        .{ .Word = .{ .Command = "true" } },
+    };
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+
+    const tree = try core.build_tree(&tokens, allocator);
+    const status = try core.execTree(tree, allocator, &env_map);
+
+    try std.testing.expectEqual(0, status);
+}
+
+test "AST: Exec AND Operation" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const tokens = [_]Token{
+        .{ .Word = .{ .Command = "true" } },
+        .AndAnd,
+        .{ .Word = .{ .Command = "false" } },
+    };
+
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+
+    const tree = try core.build_tree(&tokens, allocator);
+    const status = try core.execTree(tree, allocator, &env_map);
+
+    try std.testing.expectEqual(1, status);
+}
+
+test "AST: Exec AND Operation failed" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const tokens = [_]Token{
+        .{ .Word = .{ .Command = "false" } },
+        .AndAnd,
+        .{ .Word = .{ .Command = "true" } },
+    };
+
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+
+    const tree = try core.build_tree(&tokens, allocator);
+    const status = try core.execTree(tree, allocator, &env_map);
+
+    try std.testing.expectEqual(1, status);
+}

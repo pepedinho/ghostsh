@@ -80,7 +80,7 @@ pub fn debugPrint(token: Token) void {
     }
 }
 
-fn extractWord(line_lex: *LineLex, env: *const std.process.EnvMap, allocator: std.mem.Allocator) ![]const u8 {
+fn extractWord(line_lex: *LineLex, env: *std.process.EnvMap, allocator: std.mem.Allocator) ![]const u8 {
     const line = line_lex.line;
     const start = line_lex.index;
     var is_dquotes = false;
@@ -153,7 +153,7 @@ fn extractVarName(line_lex: *LineLex) []const u8 {
     return line[start .. start + pos];
 }
 
-pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: *const std.process.EnvMap) ![]Token {
+pub fn lex(allocator: std.mem.Allocator, line: []const u8, env: *std.process.EnvMap) ![]Token {
     var line_lex = LineLex{ .line = line, .index = 0 };
 
     var tokens: ArrayList(Token) = .empty;
