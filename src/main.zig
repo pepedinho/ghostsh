@@ -27,7 +27,14 @@ pub fn main() !void {
     const buffer: [4096]u8 = undefined;
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
+    defer {
+        const deinit_status = gpa.deinit();
+        if (deinit_status == .leak) {
+            std.debug.print("[!]GSH: MEMORY LEAKS DETECTED\n", .{});
+            std.posix.exit(42);
+        }
+        if (deinit_status == .ok) {}
+    }
     const heap_allocator = gpa.allocator();
 
     const fallback = std.heap.stackFallback(buffer.len, heap_allocator);
@@ -47,5 +54,5 @@ pub fn main() !void {
     var env_map = try std.process.getEnvMap(allocator);
     defer env_map.deinit();
 
-    try rl.receivePrompt(&env_map);
+    try rl.receivePrompt(allocator, &env_map);
 }

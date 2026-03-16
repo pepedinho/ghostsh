@@ -8,38 +8,84 @@ const ARENA_REINIT_THRESHOLD = 1000;
 var arena_size: usize = 0;
 pub var sigint_received = std.atomic.Value(bool).init(false);
 
-pub fn receivePrompt(env: *std.process.EnvMap) !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
-    defer arena.deinit();
-    initReadline();
-    while (true) {
-        const allocator = arena.allocator();
+fn readPipeLine(allocator: std.mem.Allocator) !?[]const u8 {
+    var list: std.ArrayList(u8) = .empty;
+    errdefer list.deinit(allocator);
 
-        const command_line = rl.readline(allocator, "gsh> ") orelse {
-            if (sigint_received.load(.monotonic)) {
-                _ = sigint_received.swap(false, .monotonic);
-                continue;
+    var byte: [1]u8 = undefined;
+    while (true) {
+        const byte_read = try std.posix.read(std.posix.STDIN_FILENO, &byte);
+
+        if (byte_read == 0) {
+            if (list.items.len == 0) return null;
+            break;
+        }
+
+        if (byte[0] == '\n') break;
+        try list.append(allocator, byte[0]);
+    }
+
+    const slice = try list.toOwnedSlice(allocator);
+
+    return slice;
+}
+
+pub fn receivePrompt(allocator: std.mem.Allocator, env: *std.process.EnvMap) !void {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const is_interactive = std.posix.isatty(std.posix.STDIN_FILENO);
+
+    if (is_interactive) {
+        initReadline();
+    }
+
+    while (true) {
+        const arena_allocator = arena.allocator();
+        var command_line: ?[]const u8 = null;
+        var used_readline = false;
+
+        if (is_interactive) {
+            if (rl.readline(arena_allocator, "gsh> ")) |line| {
+                command_line = line;
+                used_readline = true;
+            } else {
+                if (sigint_received.load(.monotonic)) {
+                    _ = sigint_received.swap(false, .monotonic);
+                    continue;
+                }
+                std.debug.print("exit\n", .{});
+                return;
             }
-            std.debug.print("exit", .{});
-            return;
-        };
+        } else {
+            command_line = readPipeLine(arena_allocator) catch |err| {
+                std.debug.print("gsh: read error: {s}\n", .{@errorName(err)});
+                return;
+            };
+
+            if (command_line == null) {
+                return;
+            }
+        }
 
         if (sigint_received.swap(false, .monotonic)) {
-            rl.free(command_line);
+            if (used_readline) rl.free(command_line.?);
             continue;
         }
 
-        parser.parse(allocator, command_line, env) catch |err| {
-            switch (err) {
-                inline else => std.debug.print("gsh: error: {s}\n", .{@errorName(err)}),
+        if (command_line) |cmd| {
+            if (cmd.len > 0) {
+                parser.parse(arena_allocator, cmd, env) catch |err| {
+                    std.debug.print("gsh: error: {s}\n", .{@errorName(err)});
+                };
             }
-            rl.free(command_line);
-            clearArena(&arena, command_line);
-            continue;
-        };
 
-        rl.free(command_line);
-        clearArena(&arena, command_line);
+            if (used_readline) {
+                rl.free(cmd);
+            }
+
+            clearArena(&arena, cmd);
+        }
     }
 }
 
