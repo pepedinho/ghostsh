@@ -258,8 +258,8 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *std.process.Env
                         std.posix.close(pipe[0]);
                         std.posix.close(pipe[1]);
 
-                        _ = try execTree(op.left, allocator, env);
-                        std.posix.exit(0);
+                        const left_status = try execTree(op.left, allocator, env);
+                        std.posix.exit(@intCast(left_status));
                     }
 
                     const right_pid = try std.posix.fork();
@@ -269,14 +269,15 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *std.process.Env
                         std.posix.close(pipe[0]);
                         std.posix.close(pipe[1]);
 
-                        _ = try execTree(op.right, allocator, env);
-                        std.posix.exit(0);
+                        const right_status = try execTree(op.right, allocator, env);
+                        std.posix.exit(@intCast(right_status));
                     }
 
                     std.posix.close(pipe[0]);
                     std.posix.close(pipe[1]);
 
                     const right_res = std.posix.waitpid(right_pid, 0);
+                    _ = std.posix.waitpid(left_pid, 0);
                     if (std.posix.W.IFEXITED(right_res.status)) {
                         return std.posix.W.EXITSTATUS(right_res.status);
                     }
