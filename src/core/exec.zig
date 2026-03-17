@@ -173,6 +173,8 @@ fn checkBuiltIn(cmd: []const u8, argv: []const []const u8, allocator: std.mem.Al
         return builtin.cd(argv, allocator, env);
     } else if (std.mem.eql(u8, cmd, "env")) {
         return builtin.env(env);
+    } else if (std.mem.eql(u8, cmd, "export")) {
+        return builtin.exportBt(argv, env);
     }
 
     return null;

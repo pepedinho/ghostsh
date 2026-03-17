@@ -51,3 +51,18 @@ pub fn env(environ: *std.process.EnvMap) u8 {
 
     return 0;
 }
+
+pub fn exportBt(argv: []const []const u8, environ: *std.process.EnvMap) u8 {
+    for (argv) |arg| {
+        const equal = std.mem.indexOfScalar(u8, arg, '=') orelse 0;
+
+        if (equal == 0)
+            continue;
+
+        const key = arg[0..equal];
+        const value = arg[equal + 1 .. arg.len];
+
+        environ.put(key, value) catch return 1;
+    }
+    return 0;
+}
