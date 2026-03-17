@@ -171,6 +171,8 @@ const builtin = @import("builtins.zig");
 fn checkBuiltIn(cmd: []const u8, argv: []const []const u8, allocator: std.mem.Allocator, env: *std.process.EnvMap) ?u8 {
     if (std.mem.eql(u8, cmd, "cd")) {
         return builtin.cd(argv, allocator, env);
+    } else if (std.mem.eql(u8, cmd, "env")) {
+        return builtin.env(env);
     }
 
     return null;
