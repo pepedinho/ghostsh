@@ -1,6 +1,7 @@
 const std = @import("std");
 const parser = @import("../parsing/parsing.zig");
 const rl = @import("../readline.zig");
+const history = @import("history.zig");
 
 // Number of bytes of accumulated command input after which we force a full
 // arena reset (free_all) to prevent unbounded memory growth.
@@ -37,6 +38,7 @@ pub fn receivePrompt(allocator: std.mem.Allocator, env: *std.process.EnvMap) !vo
     const is_interactive = std.posix.isatty(std.posix.STDIN_FILENO);
 
     if (is_interactive) {
+        history.initHistory(allocator);
         initReadline();
     }
 
@@ -49,6 +51,11 @@ pub fn receivePrompt(allocator: std.mem.Allocator, env: *std.process.EnvMap) !vo
             if (rl.readline(arena_allocator, "gsh> ")) |line| {
                 command_line = line;
                 used_readline = true;
+
+                if (line.len > 0) {
+                    rl.c.add_history(line.ptr);
+                    history.appendHistory(line);
+                }
             } else {
                 if (sigint_received.load(.monotonic)) {
                     _ = sigint_received.swap(false, .monotonic);

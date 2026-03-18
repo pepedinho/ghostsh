@@ -4,6 +4,7 @@ pub const c = @cImport({
     @cInclude("stdio.h");
     @cInclude("readline/readline.h");
     @cInclude("readline/readline.h");
+    @cInclude("readline/history.h");
 });
 
 pub fn readline(allocator: std.mem.Allocator, prompt: []const u8) ?[]const u8 {

@@ -1,0 +1,29 @@
+ls
+clear
+clear
+ls
+cd 
+ls
+cat history.txt 
+clear
+< history.txt cat | grep ls | wc -l
+()
+(ls)
+clear
+{ls}
+bash
+clear
+ls
+cat /proc
+cat /proc/cpuinfo 
+batcat /proc/cpuinfo 
+clear
+batcat /proc/cpuinfo | Genin
+batcat /proc/cpuinfo | grep Genin
+batcat /proc/cpuinfo | grep Genin
+cat /proc/cpuinfo | grep Genin
+batcat /proc/cpuinfo 
+cat /proc/cpuinfo | grep Genuine
+batcat /proc/cpuinfo 
+cat /proc/cpuinfo | grep Genuine | wc -l
+clear
