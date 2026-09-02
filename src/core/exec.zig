@@ -168,7 +168,7 @@ fn convertEnvToPosix(env: *std.process.Environ.Map, allocator: std.mem.Allocator
 
 const builtin = @import("builtins.zig");
 
-fn checkBuiltIn(io: std.Io, cmd: []const u8, argv: []const []const u8, allocator: std.mem.Allocator, env: *std.process.Environ.Map)?u8 {
+fn checkBuiltIn(io: std.Io, cmd: []const u8, argv: []const []const u8, allocator: std.mem.Allocator, env: *std.process.Environ.Map) ?u8 {
     if (std.mem.eql(u8, cmd, "cd")) {
         return builtin.cd(argv, io, allocator, env);
     }
@@ -198,19 +198,19 @@ pub fn execTree(io: std.Io, node: *Node, allocator: std.mem.Allocator, env: *std
             argv[cmd.args.len] = null;
             const envp = try convertEnvToPosix(env, allocator);
 
-            const pid = std.c.fork();
+            const pid = std.os.linux.fork();
             if (pid < 0) {
                 const err = std.c.errno(pid);
-                std.debug.print("gsh: {s}\n", .{err});
+                std.debug.print("gsh: {}\n", .{err});
             }
             if (pid == 0) {
                 if (cmd.in_file) |in_file| {
                     const file_z = try allocator.dupeZ(u8, in_file);
                     const flags = std.posix.O{ .ACCMODE = .RDONLY };
-                    
+
                     const fd = std.c.open(file_z, flags);
                     if (fd < 0) {
-                        std.debug.print("gsh: {s}: No such file or directory.\n", .{ in_file  });
+                        std.debug.print("gsh: {s}: No such file or directory.\n", .{in_file});
                         std.c.exit(1);
                     }
                     if (std.c.dup2(fd, std.posix.STDOUT_FILENO) < 0) {
@@ -232,7 +232,7 @@ pub fn execTree(io: std.Io, node: *Node, allocator: std.mem.Allocator, env: *std
 
                     const fd = std.c.open(file_z, flags, @as(c_int, 0o666));
                     if (fd < 0) {
-                        std.debug.print("gsh: {s}: No such file or directory.\n", .{ out_file  });
+                        std.debug.print("gsh: {s}: No such file or directory.\n", .{out_file});
                         std.c.exit(1);
                     }
                     if (std.c.dup2(fd, std.posix.STDOUT_FILENO) < 0) {
@@ -240,22 +240,30 @@ pub fn execTree(io: std.Io, node: *Node, allocator: std.mem.Allocator, env: *std
                     }
                     if (std.c.close(fd) < 0) {
                         return error.CloseFail;
-            
                     }
                 }
 
                 const file = argv[0].?;
                 const argv_ptr: [*:null]const ?[*:0]const u8 = @ptrCast(argv.ptr);
 
-                const err = std.c.execve(file, argv_ptr, envp);
+                const path = try find_path(allocator, env, file);
 
-                std.debug.print("gsh: {s}: Failed to exec.\n", .{ cmd.args[0] });
-                std.c.exit(err);
+                if (path) |p| {
+                    const err = std.c.execve(p, argv_ptr, envp);
+                    const error_msg = std.c.errno(err);
+                    std.debug.print("gsh: {s}: {}\n", .{ cmd.args[0], error_msg });
+                    std.c.exit(err);
+                }
+
+                const err = std.c.errno(-1);
+                std.debug.print("gsh: {s}: {}", .{ cmd.args[0], err });
+
+                std.c.exit(-1);
             } else {
                 var status: c_int = undefined;
 
                 //WARN: need to check waitpid return value
-                _ = std.c.waitpid(pid, &status, @as(c_int, 0));
+                _ = std.c.waitpid(@intCast(pid), &status, @as(c_int, 0));
 
                 if (std.posix.W.IFEXITED(@intCast(status))) {
                     return std.posix.W.EXITSTATUS(@intCast(status));
@@ -268,55 +276,72 @@ pub fn execTree(io: std.Io, node: *Node, allocator: std.mem.Allocator, env: *std
             switch (op.kind) {
                 .Pipe => {
                     logger.debug("create pipe\n", .{});
-                    var pipe: [2]i32 = .{ 0, 0};
+                    var pipe: [2]i32 = .{ 0, 0 };
                     const pipe_s = std.c.pipe(&pipe);
                     if (pipe_s < 0) {
                         const err = std.c.errno(pipe_s);
-                        std.debug.print("{s}", .{err});
+                        std.debug.print("{}", .{err});
                     }
 
-                    const left_pid = std.c.fork();
+                    const left_pid = std.os.linux.fork();
                     if (left_pid < 0) {
                         const err = std.c.errno(left_pid);
-                        std.debug.print("gsh: {s}\n", .{err});
+                        std.debug.print("gsh: {}\n", .{err});
                     }
                     if (left_pid == 0) {
                         if (std.c.dup2(pipe[1], std.posix.STDOUT_FILENO) < 0) {
                             return error.Dup2Fail;
                         }
 
-                        std.posix.close(pipe[0]);
-                        std.posix.close(pipe[1]);
+                        if (std.c.close(pipe[0]) < 0) {
+                            return error.CloseFail;
+                        }
+                        if (std.c.close(pipe[1]) < 0) {
+                            return error.CloseFail;
+                        }
 
-                        const left_status = try execTree(io,op.left, allocator, env);
-                        std.posix.exit(@intCast(left_status));
+                        const left_status = try execTree(io, op.left, allocator, env);
+                        std.c.exit(@intCast(left_status));
                     }
 
-                    const right_pid = try std.c.fork();
+                    const right_pid = std.os.linux.fork();
                     if (right_pid < 0) {
                         const err = std.c.errno(right_pid);
-                        std.debug.print("gsh: {s}\n", .{err});
+                        std.debug.print("gsh: {}\n", .{err});
                     }
                     if (right_pid == 0) {
                         if (std.c.dup2(pipe[0], std.posix.STDOUT_FILENO) < 0) {
                             return error.Dup2Fail;
                         }
 
-                        std.posix.close(pipe[0]);
-                        std.posix.close(pipe[1]);
+                        if (std.c.close(pipe[0]) < 0) {
+                            return error.CloseFail;
+                        }
+                        if (std.c.close(pipe[1]) < 0) {
+                            return error.CloseFail;
+                        }
 
-                        const right_status = try execTree(io,op.right, allocator, env);
-                        std.posix.exit(@intCast(right_status));
+                        const right_status = try execTree(io, op.right, allocator, env);
+                        std.c.exit(@intCast(right_status));
                     }
 
-                    std.posix.close(pipe[0]);
-                    std.posix.close(pipe[1]);
-
-                    const right_res = std.posix.waitpid(right_pid, 0);
-                    _ = std.posix.waitpid(left_pid, 0);
-                    if (std.posix.W.IFEXITED(right_res.status)) {
-                        return std.posix.W.EXITSTATUS(right_res.status);
+                    if (std.c.close(pipe[0]) < 0) {
+                        return error.CloseFail;
                     }
+                    if (std.c.close(pipe[1]) < 0) {
+                        return error.CloseFail;
+                    }
+
+                    var right_status: c_int = undefined;
+                    var left_status: c_int = undefined;
+
+                    //WARN: need to check waitpid return value
+                    _ = std.c.waitpid(@intCast(right_pid), &right_status, @as(c_int, 0));
+                    _ = std.c.waitpid(@intCast(left_pid), &left_status, @as(c_int, 0));
+                    if (std.posix.W.IFEXITED(@intCast(right_status))) {
+                        return std.posix.W.EXITSTATUS(@intCast(right_status));
+                    }
+
                     return 1;
                 },
                 .LogicalAnd => {
@@ -342,4 +367,24 @@ pub fn execTree(io: std.Io, node: *Node, allocator: std.mem.Allocator, env: *std
             }
         },
     }
+}
+
+fn find_path(allocator: std.mem.Allocator, env: *std.process.Environ.Map, target: [*:0]const u8) !?[:0]u8 {
+    const path_store = env.get("PATH");
+    const target_slice = std.mem.span(target);
+
+    if (path_store) |path_linked| {
+        var path = std.mem.splitAny(u8, path_linked, ":");
+
+        while (path.next()) |p| {
+            const complete_path = try std.mem.joinZ(allocator, "/", &.{ p, target_slice });
+            if (std.c.access(complete_path, std.posix.F_OK | std.posix.X_OK) == 0) {
+                return complete_path;
+            }
+
+            allocator.free(complete_path);
+        }
+    }
+
+    return null;
 }
