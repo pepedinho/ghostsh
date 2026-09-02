@@ -9,7 +9,7 @@ test "Lexer: basic command with arguments" {
     defer arena.deinit();
 
     const allocator = arena.allocator();
-    var env = std.process.EnvMap.init(allocator);
+    var env = std.process.Environ.Map.init(allocator);
 
     const input = "ls -l /tmp";
     const tokens = try token.lex(allocator, input, &env);
@@ -24,7 +24,7 @@ test "Lexer: expansion and quotes" {
     defer arena.deinit();
 
     const allocator = arena.allocator();
-    var env = std.process.EnvMap.init(allocator);
+    var env = std.process.Environ.Map.init(allocator);
 
     try env.put("USER", "pepedinho");
     const input = "echo \"hello $USER\"";

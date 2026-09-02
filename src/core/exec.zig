@@ -146,7 +146,7 @@ pub fn build_tree(tokens: []const Token, allocator: std.mem.Allocator) !*Node {
     return node;
 }
 
-fn convertEnvToPosix(env: *std.process.EnvMap, allocator: std.mem.Allocator) ![*:null]const ?[*:0]const u8 {
+fn convertEnvToPosix(env: *std.process.Environ.Map, allocator: std.mem.Allocator) ![*:null]const ?[*:0]const u8 {
     var envp_array = try allocator.alloc(?[*:0]const u8, env.count() + 1);
 
     var iter = env.iterator();
@@ -168,15 +168,15 @@ fn convertEnvToPosix(env: *std.process.EnvMap, allocator: std.mem.Allocator) ![*
 
 const builtin = @import("builtins.zig");
 
-fn checkBuiltIn(cmd: []const u8, argv: []const []const u8, allocator: std.mem.Allocator, env: *std.process.EnvMap) ?u8 {
+fn checkBuiltIn(io: std.Io, cmd: []const u8, argv: []const []const u8, allocator: std.mem.Allocator, env: *std.process.Environ.Map)?u8 {
     if (std.mem.eql(u8, cmd, "cd")) {
-        return builtin.cd(argv, allocator, env);
+        return builtin.cd(argv, io, allocator, env);
     }
 
     return null;
 }
 
-pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *std.process.EnvMap) !u8 {
+pub fn execTree(io: std.Io, node: *Node, allocator: std.mem.Allocator, env: *std.process.Environ.Map) !u8 {
     switch (node.*) {
         .Command => |cmd| {
             if (cmd.args.len == 0) return 0;
@@ -184,7 +184,7 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *std.process.Env
             // std.debug.print("prepare command: {s}\n", .{cmd.args[0]});
 
             logger.debug("cmd.len: {d}\n", .{cmd.args.len});
-            const bt = checkBuiltIn(cmd.args[0], cmd.args[1..], allocator, env);
+            const bt = checkBuiltIn(io, cmd.args[0], cmd.args[1..], allocator, env);
 
             if (bt != null) {
                 return bt.?;
@@ -198,17 +198,27 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *std.process.Env
             argv[cmd.args.len] = null;
             const envp = try convertEnvToPosix(env, allocator);
 
-            const pid = try std.posix.fork();
+            const pid = std.c.fork();
+            if (pid < 0) {
+                const err = std.c.errno(pid);
+                std.debug.print("gsh: {s}\n", .{err});
+            }
             if (pid == 0) {
                 if (cmd.in_file) |in_file| {
                     const file_z = try allocator.dupeZ(u8, in_file);
                     const flags = std.posix.O{ .ACCMODE = .RDONLY };
-                    const fd = std.posix.openZ(file_z, flags, 0) catch |err| {
-                        std.debug.print("gsh: {s}: {s}\n", .{ in_file, @errorName(err) });
-                        std.posix.exit(1);
-                    };
-                    try std.posix.dup2(fd, std.posix.STDIN_FILENO);
-                    std.posix.close(fd);
+                    
+                    const fd = std.c.open(file_z, flags);
+                    if (fd < 0) {
+                        std.debug.print("gsh: {s}: No such file or directory.\n", .{ in_file  });
+                        std.c.exit(1);
+                    }
+                    if (std.c.dup2(fd, std.posix.STDOUT_FILENO) < 0) {
+                        return error.Dup2Fail;
+                    }
+                    if (std.c.close(fd) < 0) {
+                        return error.CloseFail;
+                    }
                 }
 
                 if (cmd.out_file) |out_file| {
@@ -220,26 +230,35 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *std.process.Env
                         .APPEND = cmd.append,
                     };
 
-                    const fd = std.posix.openZ(file_z, flags, 0o666) catch |err| {
-                        std.debug.print("gsh: {s}: {s}\n", .{ out_file, @errorName(err) });
-                        std.posix.exit(1);
-                    };
-                    try std.posix.dup2(fd, std.posix.STDOUT_FILENO);
-                    std.posix.close(fd);
+                    const fd = std.c.open(file_z, flags, @as(c_int, 0o666));
+                    if (fd < 0) {
+                        std.debug.print("gsh: {s}: No such file or directory.\n", .{ out_file  });
+                        std.c.exit(1);
+                    }
+                    if (std.c.dup2(fd, std.posix.STDOUT_FILENO) < 0) {
+                        return error.Dup2Fail;
+                    }
+                    if (std.c.close(fd) < 0) {
+                        return error.CloseFail;
+            
+                    }
                 }
 
                 const file = argv[0].?;
                 const argv_ptr: [*:null]const ?[*:0]const u8 = @ptrCast(argv.ptr);
 
-                const err = std.posix.execvpeZ(file, argv_ptr, envp);
+                const err = std.c.execve(file, argv_ptr, envp);
 
-                std.debug.print("gsh: {s}: {s}\n", .{ cmd.args[0], @errorName(err) });
-                std.posix.exit(1);
+                std.debug.print("gsh: {s}: Failed to exec.\n", .{ cmd.args[0] });
+                std.c.exit(err);
             } else {
-                const wait_res = std.posix.waitpid(pid, 0);
+                var status: c_int = undefined;
 
-                if (std.posix.W.IFEXITED(wait_res.status)) {
-                    return std.posix.W.EXITSTATUS(wait_res.status);
+                //WARN: need to check waitpid return value
+                _ = std.c.waitpid(pid, &status, @as(c_int, 0));
+
+                if (std.posix.W.IFEXITED(@intCast(status))) {
+                    return std.posix.W.EXITSTATUS(@intCast(status));
                 }
 
                 return 1;
@@ -249,27 +268,44 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *std.process.Env
             switch (op.kind) {
                 .Pipe => {
                     logger.debug("create pipe\n", .{});
-                    const pipe = try std.posix.pipe();
+                    var pipe: [2]i32 = .{ 0, 0};
+                    const pipe_s = std.c.pipe(&pipe);
+                    if (pipe_s < 0) {
+                        const err = std.c.errno(pipe_s);
+                        std.debug.print("{s}", .{err});
+                    }
 
-                    const left_pid = try std.posix.fork();
+                    const left_pid = std.c.fork();
+                    if (left_pid < 0) {
+                        const err = std.c.errno(left_pid);
+                        std.debug.print("gsh: {s}\n", .{err});
+                    }
                     if (left_pid == 0) {
-                        try std.posix.dup2(pipe[1], std.posix.STDOUT_FILENO);
+                        if (std.c.dup2(pipe[1], std.posix.STDOUT_FILENO) < 0) {
+                            return error.Dup2Fail;
+                        }
 
                         std.posix.close(pipe[0]);
                         std.posix.close(pipe[1]);
 
-                        const left_status = try execTree(op.left, allocator, env);
+                        const left_status = try execTree(io,op.left, allocator, env);
                         std.posix.exit(@intCast(left_status));
                     }
 
-                    const right_pid = try std.posix.fork();
+                    const right_pid = try std.c.fork();
+                    if (right_pid < 0) {
+                        const err = std.c.errno(right_pid);
+                        std.debug.print("gsh: {s}\n", .{err});
+                    }
                     if (right_pid == 0) {
-                        try std.posix.dup2(pipe[0], std.posix.STDIN_FILENO);
+                        if (std.c.dup2(pipe[0], std.posix.STDOUT_FILENO) < 0) {
+                            return error.Dup2Fail;
+                        }
 
                         std.posix.close(pipe[0]);
                         std.posix.close(pipe[1]);
 
-                        const right_status = try execTree(op.right, allocator, env);
+                        const right_status = try execTree(io,op.right, allocator, env);
                         std.posix.exit(@intCast(right_status));
                     }
 
@@ -286,19 +322,19 @@ pub fn execTree(node: *Node, allocator: std.mem.Allocator, env: *std.process.Env
                 .LogicalAnd => {
                     logger.debug("eval logical and\n", .{});
 
-                    const left_status = try execTree(op.left, allocator, env);
+                    const left_status = try execTree(io, op.left, allocator, env);
 
                     if (left_status == 0) {
-                        return try execTree(op.right, allocator, env);
+                        return try execTree(io, op.right, allocator, env);
                     }
 
                     return left_status;
                 },
                 .LogicalOr => {
-                    const left_status = try execTree(op.left, allocator, env);
+                    const left_status = try execTree(io, op.left, allocator, env);
 
                     if (left_status != 0) {
-                        return try execTree(op.right, allocator, env);
+                        return try execTree(io, op.right, allocator, env);
                     }
 
                     return left_status;

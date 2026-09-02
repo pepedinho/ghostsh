@@ -30,11 +30,11 @@ fn readPipeline(allocator: std.mem.Allocator) !?[]const u8 {
     return slice;
 }
 
-pub fn receivePrompt(allocator: std.mem.Allocator, env: *std.process.EnvMap) !void {
+pub fn receivePrompt(io: std.Io, allocator: std.mem.Allocator, env: *std.process.Environ.Map) !void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const is_interactive = std.posix.isatty(std.posix.STDIN_FILENO);
+    const is_interactive = std.c.isatty(std.posix.STDIN_FILENO) == 1;
 
     if (is_interactive) {
         initReadline();
@@ -75,7 +75,7 @@ pub fn receivePrompt(allocator: std.mem.Allocator, env: *std.process.EnvMap) !vo
 
         if (command_line) |cmd| {
             if (cmd.len > 0) {
-                parser.parse(arena_allocator, cmd, env) catch |err| {
+                parser.parse(io, arena_allocator, cmd, env) catch |err| {
                     std.debug.print("gsh: error: {s}\n", .{@errorName(err)});
                 };
             }

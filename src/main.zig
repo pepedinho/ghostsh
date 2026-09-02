@@ -3,17 +3,17 @@ const builtin = @import("builtin");
 const rl = @import("prompt/prompt.zig");
 const logger = @import("logger/logger.zig");
 
-fn handleSig(sig_num: c_int) callconv(.c) void {
+fn handleSig(sig_num: std.posix.SIG) callconv(.c) void {
     std.log.debug("SIGNAL: {d}", .{sig_num});
 }
 
-fn handleSigInt(sig_num: c_int) callconv(.c) void {
+fn handleSigInt(sig_num: std.posix.SIG) callconv(.c) void {
     _ = sig_num;
     rl.sigint_received.store(true, .monotonic);
     _ = rl.rlDone();
 }
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     const action = std.posix.Sigaction{
         .handler = .{ .handler = handleSigInt },
         .mask = std.posix.sigemptyset(),
@@ -26,7 +26,7 @@ pub fn main() !void {
 
     const buffer: [4096]u8 = undefined;
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const gpa = init.gpa;
     defer {
         const deinit_status = gpa.deinit();
         if (deinit_status == .leak) {
@@ -34,12 +34,12 @@ pub fn main() !void {
             std.posix.exit(42);
         }
     }
-    const heap_allocator = gpa.allocator();
+    const heap_allocator = gpa;
 
     const fallback = std.heap.stackFallback(buffer.len, heap_allocator);
     const allocator = fallback.fallback_allocator;
 
-    var args_iter = try std.process.argsWithAllocator(allocator);
+    var args_iter = init.minimal.args.iterate();
     defer args_iter.deinit();
 
     _ = args_iter.skip();
@@ -50,8 +50,8 @@ pub fn main() !void {
         }
     }
 
-    var env_map = try std.process.getEnvMap(allocator);
+    var env_map = init.environ_map;
     defer env_map.deinit();
 
-    try rl.receivePrompt(allocator, &env_map);
+    try rl.receivePrompt(init.io, allocator, env_map);
 }
